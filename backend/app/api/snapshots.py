@@ -105,7 +105,88 @@ def create_share_link_for_snapshot(snapshot: PublishedSnapshot) -> tuple[ShareLi
     return share_link, share_token
 
 
+def extract_backtest_period(result_payload: dict) -> dict:
+    series = result_payload.get("equity_curve") or result_payload.get("candles") or []
+    timestamps = [point.get("timestamp") for point in series if isinstance(point, dict) and point.get("timestamp")]
+    return {
+        "start": timestamps[0] if timestamps else None,
+        "end": timestamps[-1] if timestamps else None,
+    }
+
+
+def build_report_metadata(backtest: BacktestRun, title: str, publisher: User) -> dict:
+    config = backtest.config or {}
+    metrics = backtest.metrics or {}
+    result_payload = backtest.result_payload or {}
+    scope = config.get("scope") or ("portfolio" if config.get("portfolio_id") else "instrument")
+    target_label = (
+        config.get("portfolio_name")
+        or config.get("instrument_symbol")
+        or (f"固定组合 #{config.get('portfolio_id')}" if config.get("portfolio_id") else None)
+        or (f"标的 #{config.get('instrument_id')}" if config.get("instrument_id") else "未记录标的")
+    )
+    bar_count = int(metrics.get("bar_count") or 0)
+    missing_sections = [
+        section
+        for section in ("equity_curve", "benchmark_curve", "drawdown_curve", "candles", "position_curve", "trade_table")
+        if not result_payload.get(section)
+    ]
+    warnings = []
+    if bar_count < 30:
+        warnings.append("样本K线数量较少，展示结果仅适合作为流程演示或初步观察。")
+    if missing_sections:
+        warnings.append("部分展示数据缺失：" + "、".join(missing_sections))
+
+    return {
+        "title": title,
+        "strategy_id": backtest.strategy_id,
+        "strategy_version": "0.1.0",
+        "snapshot_status": "published",
+        "scope": scope,
+        "scope_label": "固定组合" if scope == "portfolio" else "单支股票",
+        "target_label": target_label,
+        "frequency": config.get("frequency", "5m"),
+        "initial_cash": config.get("initial_cash"),
+        "backtest_period": extract_backtest_period(result_payload),
+        "generated_at": utc_now().isoformat(),
+        "publisher": publisher.username,
+        "warnings": warnings,
+        "missing_sections": missing_sections,
+    }
+
+
+def build_report_assumptions(backtest: BacktestRun) -> dict:
+    config = backtest.config or {}
+    return {
+        "data_source": config.get("data_source", "stored_bars"),
+        "execution_model": "V1简化规则回测，按已存储K线生成信号与权益曲线。",
+        "fees_included": False,
+        "slippage_included": False,
+        "benchmark_method": "V1基准曲线暂沿用策略权益曲线结构，后续可接入指数或组合基准。",
+        "frequency": config.get("frequency", "5m"),
+        "live_trading": False,
+    }
+
+
+def build_data_quality_summary(backtest: BacktestRun) -> dict:
+    bar_count = int((backtest.metrics or {}).get("bar_count") or 0)
+    if bar_count == 0:
+        status = "empty"
+    elif bar_count < 30:
+        status = "warning"
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "bar_count": bar_count,
+        "sample_warning": bar_count < 30,
+        "message": "样本K线数量较少。" if bar_count < 30 else "样本数量满足基础展示要求。",
+    }
+
+
 def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) -> dict:
+    report_metadata = build_report_metadata(backtest, title, publisher)
     return {
         "title": title,
         "strategy_id": backtest.strategy_id,
@@ -113,9 +194,12 @@ def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) 
         "parameter_set_id": backtest.parameter_set_id,
         "backtest_run_id": backtest.id,
         "backtest_config": backtest.config,
+        "report_metadata": report_metadata,
+        "assumptions": build_report_assumptions(backtest),
+        "data_quality": build_data_quality_summary(backtest),
         "metrics": backtest.metrics,
         "result_payload": backtest.result_payload,
-        "generated_at": utc_now().isoformat(),
+        "generated_at": report_metadata["generated_at"],
         "publisher": publisher.username,
         "risk_disclosure": backtest.result_payload.get(
             "risk_disclosure",

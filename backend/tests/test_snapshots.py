@@ -78,6 +78,15 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
         assert published["share_token"]
         assert published["snapshot"]["immutable_payload"]["title"] == "Published rolling T report"
         assert published["snapshot"]["immutable_payload"]["metrics"]["bar_count"] == 2
+        metadata = published["snapshot"]["immutable_payload"]["report_metadata"]
+        assert metadata["scope_label"] == "单支股票"
+        assert metadata["target_label"] == "TSNAP01"
+        assert metadata["backtest_period"]["start"].startswith("2026-01-02T09:35:00")
+        assert metadata["warnings"]
+        assumptions = published["snapshot"]["immutable_payload"]["assumptions"]
+        assert assumptions["fees_included"] is False
+        assert assumptions["slippage_included"] is False
+        assert published["snapshot"]["immutable_payload"]["data_quality"]["status"] == "warning"
 
         public_response = client.get(f"/api/public/snapshots/{published['share_token']}")
         assert public_response.status_code == 200
