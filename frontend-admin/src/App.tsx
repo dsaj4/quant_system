@@ -39,6 +39,7 @@ import {
   fetchDataImportTasks,
   fetchBacktests,
   fetchMarketBars,
+  fetchMarketDataSchedules,
   fetchPaperRuns,
   fetchPortfolios,
   fetchShareLinks,
@@ -47,6 +48,7 @@ import {
   fetchStrategyParameterSets,
   createBacktest,
   createInstrument,
+  createMarketDataSchedule,
   createPaperRun,
   createPortfolio,
   createShareLink,
@@ -56,6 +58,8 @@ import {
   publishSnapshot,
   revokeSnapshot,
   revokeShareLink,
+  runMarketDataSchedule,
+  disableMarketDataSchedule,
   type BacktestInput,
   type BacktestRun,
   type Bar,
@@ -64,6 +68,8 @@ import {
   login,
   type Instrument,
   type InstrumentInput,
+  type MarketDataSchedule,
+  type MarketDataScheduleInput,
   type OperationLog,
   type PaperRun,
   type PaperRunInput,
@@ -147,6 +153,7 @@ function App() {
   const [backtests, setBacktests] = useState<BacktestRun[]>([])
   const [paperRuns, setPaperRuns] = useState<PaperRun[]>([])
   const [dataImportTasks, setDataImportTasks] = useState<DataImportTask[]>([])
+  const [marketDataSchedules, setMarketDataSchedules] = useState<MarketDataSchedule[]>([])
   const [snapshots, setSnapshots] = useState<PublishedSnapshot[]>([])
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([])
   const [latestShareToken, setLatestShareToken] = useState('')
@@ -162,6 +169,7 @@ function App() {
   const [portfolioForm] = Form.useForm<{ name: string; description: string; instrument_id: number; weight: number }>()
   const [marketDataForm] = Form.useForm<CsvImportInput>()
   const [publicFetchForm] = Form.useForm<PublicFetchInput>()
+  const [scheduleForm] = Form.useForm<MarketDataScheduleInput>()
   const [strategyParameterForm] = Form.useForm<Record<string, number | boolean | string>>()
   const [backtestForm] = Form.useForm<BacktestInput>()
   const [paperRunForm] = Form.useForm<PaperRunInput>()
@@ -170,6 +178,8 @@ function App() {
   const [portfolioSaving, setPortfolioSaving] = useState(false)
   const [marketDataImporting, setMarketDataImporting] = useState(false)
   const [publicDataFetching, setPublicDataFetching] = useState(false)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleActionId, setScheduleActionId] = useState<number | null>(null)
   const [strategyParameterSaving, setStrategyParameterSaving] = useState(false)
   const [backtestRunning, setBacktestRunning] = useState(false)
   const [paperRunStarting, setPaperRunStarting] = useState(false)
@@ -192,6 +202,7 @@ function App() {
       fetchInstruments(accessToken),
       fetchPortfolios(accessToken),
       fetchDataImportTasks(accessToken),
+      fetchMarketDataSchedules(accessToken),
       fetchStrategyParameterSets(accessToken),
       fetchBacktests(accessToken),
       fetchPaperRuns(accessToken),
@@ -205,6 +216,7 @@ function App() {
         instrumentPayload,
         portfolioPayload,
         importTaskPayload,
+        schedulePayload,
         strategyParameterSetPayload,
         backtestPayload,
         paperRunPayload,
@@ -217,6 +229,7 @@ function App() {
         setInstruments(instrumentPayload)
         setPortfolios(portfolioPayload)
         setDataImportTasks(importTaskPayload)
+        setMarketDataSchedules(schedulePayload)
         setStrategyParameterSets(strategyParameterSetPayload)
         setBacktests(backtestPayload)
         setSelectedBacktestId((current) => current ?? backtestPayload[0]?.id ?? null)
@@ -240,6 +253,7 @@ function App() {
         setPortfolios([])
         setBars([])
         setDataImportTasks([])
+        setMarketDataSchedules([])
         setStrategyParameterSets([])
         setBacktests([])
         setSelectedBacktestId(null)
@@ -272,13 +286,16 @@ function App() {
     if (instruments[0] && !publicFetchForm.getFieldValue('instrument_id')) {
       publicFetchForm.setFieldValue('instrument_id', instruments[0].id)
     }
+    if (instruments[0] && !scheduleForm.getFieldValue('instrument_id')) {
+      scheduleForm.setFieldValue('instrument_id', instruments[0].id)
+    }
     if (instruments[0] && !backtestForm.getFieldValue('instrument_id')) {
       backtestForm.setFieldValue('instrument_id', instruments[0].id)
     }
     if (instruments[0] && !paperRunForm.getFieldValue('instrument_id')) {
       paperRunForm.setFieldValue('instrument_id', instruments[0].id)
     }
-  }, [backtestForm, instruments, marketDataForm, paperRunForm, portfolioForm, publicFetchForm])
+  }, [backtestForm, instruments, marketDataForm, paperRunForm, portfolioForm, publicFetchForm, scheduleForm])
 
   useEffect(() => {
     if (strategyParameterSets[0] && !backtestForm.getFieldValue('parameter_set_id')) {
@@ -335,6 +352,7 @@ function App() {
     setPortfolios([])
     setBars([])
     setDataImportTasks([])
+    setMarketDataSchedules([])
     setStrategyParameterSets([])
     setBacktests([])
     setSelectedBacktestId(null)
@@ -433,6 +451,64 @@ function App() {
       })
       .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'Public data fetch failed'))
       .finally(() => setPublicDataFetching(false))
+  }
+
+  const handleCreateMarketDataSchedule = (values: MarketDataScheduleInput) => {
+    if (!token) {
+      return
+    }
+
+    setScheduleSaving(true)
+    setMarketDataError('')
+    createMarketDataSchedule(token, {
+      ...values,
+      instrument_id: Number(values.instrument_id),
+      interval_minutes: Number(values.interval_minutes || 60),
+      frequency: values.frequency || '5m',
+      adjust: values.adjust || '',
+    })
+      .then(() => Promise.all([fetchMarketDataSchedules(token), fetchOperationLogs(token)]))
+      .then(([schedulePayload, logPayload]) => {
+        setMarketDataSchedules(schedulePayload)
+        setOperationLogs(logPayload)
+      })
+      .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'Schedule save failed'))
+      .finally(() => setScheduleSaving(false))
+  }
+
+  const handleRunMarketDataSchedule = (scheduleId: number) => {
+    if (!token) {
+      return
+    }
+
+    setScheduleActionId(scheduleId)
+    setMarketDataError('')
+    runMarketDataSchedule(token, scheduleId)
+      .then(() => Promise.all([fetchMarketDataSchedules(token), fetchDataImportTasks(token), fetchOperationLogs(token)]))
+      .then(([schedulePayload, taskPayload, logPayload]) => {
+        setMarketDataSchedules(schedulePayload)
+        setDataImportTasks(taskPayload)
+        setOperationLogs(logPayload)
+      })
+      .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'Schedule run failed'))
+      .finally(() => setScheduleActionId(null))
+  }
+
+  const handleDisableMarketDataSchedule = (scheduleId: number) => {
+    if (!token) {
+      return
+    }
+
+    setScheduleActionId(scheduleId)
+    setMarketDataError('')
+    disableMarketDataSchedule(token, scheduleId)
+      .then(() => Promise.all([fetchMarketDataSchedules(token), fetchOperationLogs(token)]))
+      .then(([schedulePayload, logPayload]) => {
+        setMarketDataSchedules(schedulePayload)
+        setOperationLogs(logPayload)
+      })
+      .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'Schedule disable failed'))
+      .finally(() => setScheduleActionId(null))
   }
 
   const renderStrategyParameterInput = (parameter: StrategyParameter) => {
@@ -928,6 +1004,90 @@ function App() {
                     { title: 'Message', dataIndex: 'message' },
                   ]}
                   dataSource={dataImportTasks.map((task) => ({ ...task, key: task.id }))}
+                />
+              </Card>
+
+              <Card title="Market Data Schedules">
+                <Form
+                  form={scheduleForm}
+                  layout="vertical"
+                  initialValues={{
+                    instrument_id: instruments[0]?.id,
+                    frequency: '5m',
+                    start_date: '2026-01-02 09:30:00',
+                    end_date: '2026-01-02 15:00:00',
+                    adjust: '',
+                    interval_minutes: 60,
+                  }}
+                  onFinish={handleCreateMarketDataSchedule}
+                >
+                  <div className="market-data-grid">
+                    <Form.Item name="instrument_id" label="Instrument ID" rules={[{ required: true }]}>
+                      <Input placeholder="Instrument ID" />
+                    </Form.Item>
+                    <Form.Item name="frequency" label="Frequency" rules={[{ required: true }]}>
+                      <Input placeholder="5m" />
+                    </Form.Item>
+                    <Form.Item name="interval_minutes" label="Interval Minutes" rules={[{ required: true }]}>
+                      <InputNumber min={1} max={1440} />
+                    </Form.Item>
+                  </div>
+                  <div className="market-data-grid">
+                    <Form.Item name="start_date" label="Start" rules={[{ required: true }]}>
+                      <Input placeholder="2026-01-02 09:30:00" />
+                    </Form.Item>
+                    <Form.Item name="end_date" label="End" rules={[{ required: true }]}>
+                      <Input placeholder="2026-01-02 15:00:00" />
+                    </Form.Item>
+                    <Form.Item name="adjust" label="Adjust">
+                      <Input placeholder="none / qfq / hfq" />
+                    </Form.Item>
+                  </div>
+                  <Button type="primary" htmlType="submit" loading={scheduleSaving} disabled={!instruments.length}>
+                    Add Schedule
+                  </Button>
+                </Form>
+                <Table
+                  size="small"
+                  pagination={{ pageSize: 5 }}
+                  columns={[
+                    { title: 'ID', dataIndex: 'id', width: 70 },
+                    { title: 'Instrument', dataIndex: 'instrument_id', width: 100 },
+                    { title: 'Frequency', dataIndex: 'frequency', width: 100 },
+                    { title: 'Every', dataIndex: 'interval_minutes', width: 100, render: (value: number) => `${value} min` },
+                    {
+                      title: 'Status',
+                      dataIndex: 'is_active',
+                      width: 100,
+                      render: (active: boolean) => <Tag color={active ? 'green' : 'default'}>{active ? 'active' : 'disabled'}</Tag>,
+                    },
+                    { title: 'Last Run', dataIndex: 'last_message' },
+                    {
+                      title: 'Action',
+                      dataIndex: 'id',
+                      width: 190,
+                      render: (scheduleId: number, schedule: MarketDataSchedule) => (
+                        <Space>
+                          <Button
+                            size="small"
+                            onClick={() => handleRunMarketDataSchedule(scheduleId)}
+                            loading={scheduleActionId === scheduleId}
+                            disabled={!schedule.is_active}
+                          >
+                            Run Now
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => handleDisableMarketDataSchedule(scheduleId)}
+                            disabled={!schedule.is_active}
+                          >
+                            Disable
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                  dataSource={marketDataSchedules.map((schedule) => ({ ...schedule, key: schedule.id }))}
                 />
               </Card>
 

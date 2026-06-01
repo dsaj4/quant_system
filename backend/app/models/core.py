@@ -78,6 +78,21 @@ class DataImportTask(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class MarketDataSchedule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    frequency: str = Field(default="5m", index=True)
+    start_date: str
+    end_date: str
+    adjust: str = ""
+    interval_minutes: int = 60
+    is_active: bool = Field(default=True, index=True)
+    last_run_at: Optional[datetime] = None
+    last_status: Optional[TaskStatus] = None
+    last_message: str = ""
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class StrategyParameterSet(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     strategy_id: str = Field(index=True)

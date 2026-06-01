@@ -281,7 +281,7 @@ Import rules:
 - Failed imports must not partially persist bars.
 - Import actions and failures are recorded in operation logs.
 
-The first admin UI includes a textarea-based CSV importer plus a manual public-data fetch task. Public fetch uses akshare when it is installed and records a failed task with a clear message when the provider is unavailable or returns no data. File upload and scheduled akshare fetch can be layered on top of the same backend service later.
+The first admin UI includes a textarea-based CSV importer plus manual and scheduled public-data fetch tasks. Public fetch uses akshare when it is installed and records a failed task with a clear message when the provider is unavailable or returns no data. APScheduler registers active interval schedules at backend startup; admins can create, run, and disable schedules. File upload can be layered on top of the same backend service later.
 
 ## 8. Suggested Data Objects
 

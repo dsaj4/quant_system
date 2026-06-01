@@ -118,6 +118,30 @@ export type PublicFetchInput = {
   adjust: string
 }
 
+export type MarketDataSchedule = {
+  id: number
+  instrument_id: number
+  frequency: string
+  start_date: string
+  end_date: string
+  adjust: string
+  interval_minutes: number
+  is_active: boolean
+  last_run_at: string | null
+  last_status: string | null
+  last_message: string
+  created_at: string
+}
+
+export type MarketDataScheduleInput = {
+  instrument_id: number
+  frequency: string
+  start_date: string
+  end_date: string
+  adjust: string
+  interval_minutes: number
+}
+
 export type StrategyParameterSet = {
   id: number
   strategy_id: string
@@ -348,6 +372,45 @@ export async function fetchMarketBars(
     limit: '20',
   })
   return requestJson<Bar[]>(`/market-data/bars?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function fetchMarketDataSchedules(token: string): Promise<MarketDataSchedule[]> {
+  return requestJson<MarketDataSchedule[]>('/market-data-schedules', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function createMarketDataSchedule(
+  token: string,
+  input: MarketDataScheduleInput,
+): Promise<MarketDataSchedule> {
+  return requestJson<MarketDataSchedule>('/market-data-schedules', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function runMarketDataSchedule(token: string, scheduleId: number): Promise<void> {
+  await requestJson(`/market-data-schedules/${scheduleId}/run-now`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function disableMarketDataSchedule(token: string, scheduleId: number): Promise<MarketDataSchedule> {
+  return requestJson<MarketDataSchedule>(`/market-data-schedules/${scheduleId}/disable`, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
     },
