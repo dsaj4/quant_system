@@ -5,6 +5,16 @@
   color: #172033;
 }
 
+.state-page {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  padding: 32px;
+  background: #edf2f7;
+  color: #172033;
+  text-align: center;
+}
+
 .report-hero {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
@@ -119,7 +129,7 @@ h1 {
 .line-chart,
 .candles,
 .drawdown-bars,
-.position-steps {
+.position-chart {
   height: 260px;
 }
 
@@ -149,8 +159,8 @@ h1 {
 }
 
 .drawdown-bars,
-.position-steps,
-.candles {
+.candles,
+.position-chart {
   display: flex;
   align-items: end;
   gap: 8px;
@@ -160,7 +170,6 @@ h1 {
 }
 
 .drawdown-bars i,
-.position-steps i,
 .candles i {
   display: block;
   flex: 1;
@@ -171,8 +180,19 @@ h1 {
   background: #ef4444;
 }
 
-.position-steps i {
-  background: #2563eb;
+.position-chart {
+  align-items: stretch;
+}
+
+.position-chart svg {
+  width: 100%;
+  height: 100%;
+}
+
+.position-line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 4;
 }
 
 .candles {
