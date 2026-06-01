@@ -64,6 +64,7 @@ Default local URLs:
 - Recent bar query and data import task list.
 - Saved strategy parameter sets generated from backend strategy metadata.
 - Single-instrument rolling T/grid backtests using stored bars.
+- Admin backtest review panel for metrics, curves, positions, and trade details before publishing.
 - Manual paper simulation runs using the same backend strategy path.
 - Immutable snapshot publishing with revocation and tokenized client report links.
 - Client display report page that loads published snapshots by token.

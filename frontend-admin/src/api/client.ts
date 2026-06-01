@@ -140,9 +140,13 @@ export type BacktestRun = {
   }
   result_payload: {
     equity_curve?: Array<{ timestamp: string; value: number }>
+    benchmark_curve?: Array<{ timestamp: string; value: number }>
     drawdown_curve?: Array<{ timestamp: string; value: number }>
+    position_curve?: Array<{ timestamp: string; value: number }>
+    candles?: Array<{ timestamp: string; open: number; high: number; low: number; close: number; volume: number }>
     trade_markers?: Array<{ timestamp: string; side: string; price: number }>
     trade_table?: Array<Record<string, unknown>>
+    risk_disclosure?: string
   }
   message: string
   created_at: string

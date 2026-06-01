@@ -102,6 +102,41 @@ function clientReportUrl(shareToken: string): string {
   return `${DISPLAY_BASE_URL.replace(/\/$/, '')}/?token=${encodeURIComponent(shareToken)}`
 }
 
+function formatPercent(value: number | undefined): string {
+  return `${((value ?? 0) * 100).toFixed(2)}%`
+}
+
+function formatNumber(value: number | undefined): string {
+  return (value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
+function chartPoints(series: Array<{ value: number }> = [], width = 360, height = 120): string {
+  if (!series.length) {
+    return ''
+  }
+
+  const padding = 12
+  const values = series.map((point) => point.value)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  return series
+    .map((point, index) => {
+      const x = padding + (index / Math.max(series.length - 1, 1)) * (width - padding * 2)
+      const y = padding + ((max - point.value) / range) * (height - padding * 2)
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
+    .join(' ')
+}
+
+function tradeValue(trade: Record<string, unknown>, key: string): string {
+  const value = trade[key]
+  if (typeof value === 'number') {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+  }
+  return typeof value === 'string' ? value : '-'
+}
+
 function App() {
   const [strategies, setStrategies] = useState<StrategyTemplate[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
@@ -113,6 +148,7 @@ function App() {
   const [snapshots, setSnapshots] = useState<PublishedSnapshot[]>([])
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([])
   const [latestShareToken, setLatestShareToken] = useState('')
+  const [selectedBacktestId, setSelectedBacktestId] = useState<number | null>(null)
   const [strategyParameterSets, setStrategyParameterSets] = useState<StrategyParameterSet[]>([])
   const [operationLogs, setOperationLogs] = useState<OperationLog[]>([])
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
@@ -179,6 +215,7 @@ function App() {
         setDataImportTasks(importTaskPayload)
         setStrategyParameterSets(strategyParameterSetPayload)
         setBacktests(backtestPayload)
+        setSelectedBacktestId((current) => current ?? backtestPayload[0]?.id ?? null)
         setPaperRuns(paperRunPayload)
         setSnapshots(snapshotPayload)
         setShareLinks(shareLinkPayload)
@@ -201,6 +238,7 @@ function App() {
         setDataImportTasks([])
         setStrategyParameterSets([])
         setBacktests([])
+        setSelectedBacktestId(null)
         setPaperRuns([])
         setSnapshots([])
         setShareLinks([])
@@ -292,6 +330,7 @@ function App() {
     setDataImportTasks([])
     setStrategyParameterSets([])
     setBacktests([])
+    setSelectedBacktestId(null)
     setPaperRuns([])
     setSnapshots([])
     setShareLinks([])
@@ -411,6 +450,7 @@ function App() {
       .then(() => Promise.all([fetchBacktests(token), fetchOperationLogs(token)]))
       .then(([backtestPayload, logPayload]) => {
         setBacktests(backtestPayload)
+        setSelectedBacktestId(backtestPayload[0]?.id ?? null)
         setOperationLogs(logPayload)
       })
       .catch((error) => setBacktestError(error instanceof Error ? error.message : 'Backtest failed'))
@@ -518,6 +558,12 @@ function App() {
       .catch((error) => setSnapshotError(error instanceof Error ? error.message : 'Snapshot revoke failed'))
       .finally(() => setSnapshotRevokingId(null))
   }
+
+  const selectedBacktest = backtests.find((backtest) => backtest.id === selectedBacktestId) ?? backtests[0] ?? null
+  const selectedTrades = selectedBacktest?.result_payload.trade_table ?? []
+  const selectedEquity = selectedBacktest?.result_payload.equity_curve ?? []
+  const selectedDrawdown = selectedBacktest?.result_payload.drawdown_curve ?? []
+  const selectedPosition = selectedBacktest?.result_payload.position_curve ?? []
 
   const loginPanel = (
     <main className="login-shell">
@@ -947,9 +993,140 @@ function App() {
                       width: 130,
                       render: (payload: BacktestRun['result_payload']) => payload.equity_curve?.length ?? 0,
                     },
+                    {
+                      title: 'Review',
+                      dataIndex: 'id',
+                      width: 100,
+                      render: (backtestId: number) => (
+                        <Button size="small" onClick={() => setSelectedBacktestId(backtestId)}>
+                          Review
+                        </Button>
+                      ),
+                    },
                   ]}
-                  dataSource={backtests.map((backtest) => ({ ...backtest, key: backtest.id }))}
+                  dataSource={backtests.map((backtest) => ({
+                    ...backtest,
+                    key: backtest.id,
+                    className: selectedBacktest?.id === backtest.id ? 'selected-row' : '',
+                  }))}
                 />
+              </Card>
+
+              <Card
+                title={
+                  <Space>
+                    <AreaChartOutlined />
+                    Backtest Result Review
+                  </Space>
+                }
+              >
+                {selectedBacktest ? (
+                  <Space orientation="vertical" size={16} className="review-panel">
+                    <div className="review-header">
+                      <Space wrap>
+                        <Tag color="blue">Backtest #{selectedBacktest.id}</Tag>
+                        <Tag color={selectedBacktest.status === 'succeeded' ? 'green' : 'red'}>
+                          {selectedBacktest.status}
+                        </Tag>
+                        <Text type="secondary">{selectedBacktest.strategy_id}</Text>
+                      </Space>
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          snapshotForm.setFieldsValue({
+                            backtest_run_id: selectedBacktest.id,
+                            title: `Strategy Report #${selectedBacktest.id}`,
+                          })
+                        }
+                      >
+                        Use For Snapshot
+                      </Button>
+                    </div>
+                    <div className="review-metrics">
+                      <div>
+                        <Text type="secondary">Cumulative Return</Text>
+                        <strong>{formatPercent(selectedBacktest.metrics.cumulative_return)}</strong>
+                      </div>
+                      <div>
+                        <Text type="secondary">Max Drawdown</Text>
+                        <strong>{formatPercent(selectedBacktest.metrics.max_drawdown)}</strong>
+                      </div>
+                      <div>
+                        <Text type="secondary">Win Rate</Text>
+                        <strong>{formatPercent(selectedBacktest.metrics.win_rate)}</strong>
+                      </div>
+                      <div>
+                        <Text type="secondary">Trades</Text>
+                        <strong>{selectedBacktest.metrics.trade_count ?? 0}</strong>
+                      </div>
+                      <div>
+                        <Text type="secondary">P/L Ratio</Text>
+                        <strong>{formatNumber(selectedBacktest.metrics.profit_loss_ratio)}</strong>
+                      </div>
+                    </div>
+                    <div className="review-chart-grid">
+                      <div className="review-chart-panel">
+                        <div>
+                          <Text strong>Equity Curve</Text>
+                          <Text type="secondary">{selectedEquity.length} points</Text>
+                        </div>
+                        <svg viewBox="0 0 360 120" role="img" aria-label="Equity curve">
+                          <polyline points={chartPoints(selectedEquity)} />
+                        </svg>
+                      </div>
+                      <div className="review-chart-panel">
+                        <div>
+                          <Text strong>Drawdown Curve</Text>
+                          <Text type="secondary">{selectedDrawdown.length} points</Text>
+                        </div>
+                        <svg viewBox="0 0 360 120" role="img" aria-label="Drawdown curve">
+                          <polyline points={chartPoints(selectedDrawdown)} />
+                        </svg>
+                      </div>
+                      <div className="review-chart-panel">
+                        <div>
+                          <Text strong>Position Curve</Text>
+                          <Text type="secondary">{selectedPosition.length} points</Text>
+                        </div>
+                        <svg viewBox="0 0 360 120" role="img" aria-label="Position curve">
+                          <polyline points={chartPoints(selectedPosition)} />
+                        </svg>
+                      </div>
+                    </div>
+                    <Table
+                      size="small"
+                      pagination={{ pageSize: 4 }}
+                      columns={[
+                        {
+                          title: 'Time',
+                          dataIndex: 'timestamp',
+                          width: 190,
+                          render: (value: string) => new Date(value).toLocaleString(),
+                        },
+                        {
+                          title: 'Side',
+                          dataIndex: 'side',
+                          width: 90,
+                          render: (side: string) => <Tag color={side === 'buy' ? 'green' : 'volcano'}>{side}</Tag>,
+                        },
+                        { title: 'Price', dataIndex: 'price', width: 100, render: (_: unknown, trade: Record<string, unknown>) => tradeValue(trade, 'price') },
+                        {
+                          title: 'Change %',
+                          dataIndex: 'change_percent',
+                          width: 120,
+                          render: (_: unknown, trade: Record<string, unknown>) => `${tradeValue(trade, 'change_percent')}%`,
+                        },
+                      ]}
+                      dataSource={selectedTrades.map((trade, index) => ({ ...trade, key: index }))}
+                    />
+                    <Text type="secondary">
+                      {selectedBacktest.result_payload.risk_disclosure ??
+                        'Backtest results are simulated and do not represent real-money trading.'}
+                    </Text>
+                  </Space>
+                ) : (
+                  <Text type="secondary">Run a backtest to review metrics, curves, and trades before publishing.</Text>
+                )}
               </Card>
 
               <Card title="Paper Simulation Management">
