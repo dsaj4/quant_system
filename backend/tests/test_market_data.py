@@ -135,3 +135,108 @@ def test_invalid_csv_import_fails_without_partial_bars() -> None:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert bars_response.json() == []
+
+
+def test_admin_can_fetch_public_bars_with_provider(monkeypatch) -> None:
+    with TestClient(app) as client:
+        token = login_token(client)
+        instrument_id = create_instrument(client, token, "TPUB01")
+
+        def fake_fetch_public_bars(session, **kwargs):
+            from app.services.market_data import ParsedBar, upsert_bars
+            from datetime import datetime
+
+            return upsert_bars(
+                session,
+                instrument_id=kwargs["instrument_id"],
+                frequency=kwargs["frequency"],
+                source="akshare",
+                data_version="akshare:test",
+                parsed_bars=[
+                    ParsedBar(
+                        timestamp=datetime.fromisoformat("2026-01-02 09:35:00"),
+                        open=10,
+                        high=10.5,
+                        low=9.8,
+                        close=10.2,
+                        volume=1000,
+                    ),
+                    ParsedBar(
+                        timestamp=datetime.fromisoformat("2026-01-02 09:40:00"),
+                        open=10.2,
+                        high=10.8,
+                        low=10.1,
+                        close=10.7,
+                        volume=1200,
+                    ),
+                ],
+            )
+
+        monkeypatch.setattr("app.api.market_data.fetch_public_bars", fake_fetch_public_bars)
+
+        fetch_response = client.post(
+            "/api/market-data/fetch-public",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "instrument_id": instrument_id,
+                "frequency": "5m",
+                "start_date": "2026-01-02 09:30:00",
+                "end_date": "2026-01-02 15:00:00",
+            },
+        )
+
+        assert fetch_response.status_code == 200
+        task = fetch_response.json()
+        assert task["source"] == "akshare"
+        assert task["status"] == "succeeded"
+        assert task["rows_imported"] == 2
+
+        bars_response = client.get(
+            f"/api/market-data/bars?instrument_id={instrument_id}&frequency=5m&limit=10",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        bars = bars_response.json()
+        assert len(bars) == 2
+        assert bars[0]["source"] == "akshare"
+        assert bars[0]["data_version"] == "akshare:test"
+
+        logs_response = client.get(
+            "/api/operation-logs",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        actions = [item["action"] for item in logs_response.json()]
+        assert "market_data.fetch_public.succeeded" in actions
+
+
+def test_public_fetch_failure_is_recorded(monkeypatch) -> None:
+    with TestClient(app) as client:
+        token = login_token(client)
+        instrument_id = create_instrument(client, token, "TPUB02")
+
+        def fake_fetch_public_bars(session, **kwargs):
+            raise ValueError("Public data provider returned no bars")
+
+        monkeypatch.setattr("app.api.market_data.fetch_public_bars", fake_fetch_public_bars)
+
+        response = client.post(
+            "/api/market-data/fetch-public",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "instrument_id": instrument_id,
+                "frequency": "5m",
+                "start_date": "2026-01-02 09:30:00",
+                "end_date": "2026-01-02 15:00:00",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "no bars" in response.json()["detail"]
+
+        tasks_response = client.get(
+            "/api/market-data/import-tasks",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        latest_task = tasks_response.json()[0]
+        assert latest_task["source"] == "akshare"
+        assert latest_task["status"] == "failed"
+        assert "no bars" in latest_task["message"]

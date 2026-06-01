@@ -61,6 +61,7 @@ Default local URLs:
 - Instrument and fixed-portfolio management.
 - Metadata-driven strategy registry endpoint.
 - CSV market data import through the admin frontend.
+- Manual public market data fetch task through akshare when available.
 - Recent bar query and data import task list.
 - Saved strategy parameter sets generated from backend strategy metadata.
 - Single-instrument rolling T/grid backtests using stored bars.

@@ -51,6 +51,7 @@ import {
   createPortfolio,
   createShareLink,
   createStrategyParameterSet,
+  fetchPublicMarketData,
   importCsvMarketData,
   publishSnapshot,
   revokeSnapshot,
@@ -68,6 +69,7 @@ import {
   type PaperRunInput,
   type Portfolio,
   type PublishedSnapshot,
+  type PublicFetchInput,
   type ShareLink,
   type SnapshotPublishInput,
   type StrategyParameter,
@@ -159,6 +161,7 @@ function App() {
   const [instrumentForm] = Form.useForm<InstrumentInput>()
   const [portfolioForm] = Form.useForm<{ name: string; description: string; instrument_id: number; weight: number }>()
   const [marketDataForm] = Form.useForm<CsvImportInput>()
+  const [publicFetchForm] = Form.useForm<PublicFetchInput>()
   const [strategyParameterForm] = Form.useForm<Record<string, number | boolean | string>>()
   const [backtestForm] = Form.useForm<BacktestInput>()
   const [paperRunForm] = Form.useForm<PaperRunInput>()
@@ -166,6 +169,7 @@ function App() {
   const [instrumentSaving, setInstrumentSaving] = useState(false)
   const [portfolioSaving, setPortfolioSaving] = useState(false)
   const [marketDataImporting, setMarketDataImporting] = useState(false)
+  const [publicDataFetching, setPublicDataFetching] = useState(false)
   const [strategyParameterSaving, setStrategyParameterSaving] = useState(false)
   const [backtestRunning, setBacktestRunning] = useState(false)
   const [paperRunStarting, setPaperRunStarting] = useState(false)
@@ -265,13 +269,16 @@ function App() {
     if (instruments[0] && !marketDataForm.getFieldValue('instrument_id')) {
       marketDataForm.setFieldValue('instrument_id', instruments[0].id)
     }
+    if (instruments[0] && !publicFetchForm.getFieldValue('instrument_id')) {
+      publicFetchForm.setFieldValue('instrument_id', instruments[0].id)
+    }
     if (instruments[0] && !backtestForm.getFieldValue('instrument_id')) {
       backtestForm.setFieldValue('instrument_id', instruments[0].id)
     }
     if (instruments[0] && !paperRunForm.getFieldValue('instrument_id')) {
       paperRunForm.setFieldValue('instrument_id', instruments[0].id)
     }
-  }, [backtestForm, instruments, marketDataForm, paperRunForm, portfolioForm])
+  }, [backtestForm, instruments, marketDataForm, paperRunForm, portfolioForm, publicFetchForm])
 
   useEffect(() => {
     if (strategyParameterSets[0] && !backtestForm.getFieldValue('parameter_set_id')) {
@@ -396,6 +403,36 @@ function App() {
       })
       .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'CSV import failed'))
       .finally(() => setMarketDataImporting(false))
+  }
+
+  const handleFetchPublicMarketData = (values: PublicFetchInput) => {
+    if (!token) {
+      return
+    }
+
+    setPublicDataFetching(true)
+    setMarketDataError('')
+    fetchPublicMarketData(token, {
+      ...values,
+      instrument_id: Number(values.instrument_id),
+      frequency: values.frequency || '5m',
+      adjust: values.adjust || '',
+    })
+      .then(() => {
+        const instrumentId = Number(values.instrument_id)
+        return Promise.all([
+          fetchMarketBars(token, instrumentId, values.frequency || '5m'),
+          fetchDataImportTasks(token),
+          fetchOperationLogs(token),
+        ])
+      })
+      .then(([barPayload, importTaskPayload, logPayload]) => {
+        setBars(barPayload)
+        setDataImportTasks(importTaskPayload)
+        setOperationLogs(logPayload)
+      })
+      .catch((error) => setMarketDataError(error instanceof Error ? error.message : 'Public data fetch failed'))
+      .finally(() => setPublicDataFetching(false))
   }
 
   const renderStrategyParameterInput = (parameter: StrategyParameter) => {
@@ -813,6 +850,45 @@ function App() {
                   </Form.Item>
                   <Button type="primary" htmlType="submit" loading={marketDataImporting} disabled={!instruments.length}>
                     Import CSV Bars
+                  </Button>
+                </Form>
+                <Form
+                  form={publicFetchForm}
+                  layout="vertical"
+                  initialValues={{
+                    instrument_id: instruments[0]?.id,
+                    frequency: '5m',
+                    start_date: '2026-01-02 09:30:00',
+                    end_date: '2026-01-02 15:00:00',
+                    adjust: '',
+                  }}
+                  onFinish={handleFetchPublicMarketData}
+                  className="public-fetch-form"
+                >
+                  <div className="market-data-grid">
+                    <Form.Item name="instrument_id" label="Instrument ID" rules={[{ required: true }]}>
+                      <Input placeholder="Instrument ID" />
+                    </Form.Item>
+                    <Form.Item name="frequency" label="Frequency" rules={[{ required: true }]}>
+                      <Input placeholder="5m" />
+                    </Form.Item>
+                    <Form.Item name="adjust" label="Adjust">
+                      <Input placeholder="none / qfq / hfq" />
+                    </Form.Item>
+                  </div>
+                  <div className="market-data-grid">
+                    <Form.Item name="start_date" label="Start" rules={[{ required: true }]}>
+                      <Input placeholder="2026-01-02 09:30:00" />
+                    </Form.Item>
+                    <Form.Item name="end_date" label="End" rules={[{ required: true }]}>
+                      <Input placeholder="2026-01-02 15:00:00" />
+                    </Form.Item>
+                    <Form.Item label="Source">
+                      <Input value="akshare" disabled />
+                    </Form.Item>
+                  </div>
+                  <Button type="primary" htmlType="submit" loading={publicDataFetching} disabled={!instruments.length}>
+                    Fetch Public Bars
                   </Button>
                 </Form>
                 <Table

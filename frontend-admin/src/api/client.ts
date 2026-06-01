@@ -110,6 +110,14 @@ export type CsvImportInput = {
   csv_text: string
 }
 
+export type PublicFetchInput = {
+  instrument_id: number
+  frequency: string
+  start_date: string
+  end_date: string
+  adjust: string
+}
+
 export type StrategyParameterSet = {
   id: number
   strategy_id: string
@@ -233,7 +241,14 @@ async function requestJson<T>(path: string, options: RequestInit = {}): Promise<
   })
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`)
+    let detail = `Request failed: ${response.status}`
+    try {
+      const payload = (await response.json()) as { detail?: string }
+      detail = payload.detail || detail
+    } catch {
+      // Keep the status-based fallback when the backend does not return JSON.
+    }
+    throw new Error(detail)
   }
 
   return response.json()
@@ -304,6 +319,16 @@ export async function createPortfolio(token: string, input: PortfolioInput): Pro
 
 export async function importCsvMarketData(token: string, input: CsvImportInput): Promise<DataImportTask> {
   return requestJson<DataImportTask>('/market-data/import-csv', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function fetchPublicMarketData(token: string, input: PublicFetchInput): Promise<DataImportTask> {
+  return requestJson<DataImportTask>('/market-data/fetch-public', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

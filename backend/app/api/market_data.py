@@ -7,7 +7,7 @@ from sqlmodel import select
 from app.core.database import SessionDep
 from app.core.security import get_current_user
 from app.models import Bar, DataImportTask, Instrument, TaskStatus, User, utc_now
-from app.services.market_data import import_csv_bars
+from app.services.market_data import fetch_public_bars, import_csv_bars
 from app.services.operation_log import record_operation
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -18,6 +18,14 @@ class CsvImportRequest(BaseModel):
     frequency: str = Field(default="5m", min_length=1)
     source: str = "csv"
     csv_text: str = Field(min_length=1)
+
+
+class PublicFetchRequest(BaseModel):
+    instrument_id: int
+    frequency: str = Field(default="5m", min_length=1)
+    start_date: str = Field(min_length=1)
+    end_date: str = Field(min_length=1)
+    adjust: str = ""
 
 
 class DataImportTaskResponse(BaseModel):
@@ -155,6 +163,86 @@ def import_csv_market_data(
             "frequency": frequency,
             "rows_imported": result.rows_imported,
             "rows_updated": result.rows_updated,
+        },
+    )
+    return task_response(task)
+
+
+@router.post("/fetch-public", response_model=DataImportTaskResponse)
+def fetch_public_market_data(
+    payload: PublicFetchRequest,
+    session: SessionDep,
+    current_user: User = Depends(get_current_user),
+) -> DataImportTaskResponse:
+    instrument = session.get(Instrument, payload.instrument_id)
+    if not instrument:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown instrument id: {payload.instrument_id}",
+        )
+
+    import json
+
+    frequency = payload.frequency.strip().lower()
+    task = DataImportTask(
+        source="akshare",
+        status=TaskStatus.running,
+        started_at=utc_now(),
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+
+    try:
+        result = fetch_public_bars(
+            session,
+            instrument_symbol=instrument.symbol,
+            instrument_id=payload.instrument_id,
+            frequency=frequency,
+            start_date=payload.start_date.strip(),
+            end_date=payload.end_date.strip(),
+            adjust=payload.adjust.strip(),
+        )
+    except (RuntimeError, ValueError) as exc:
+        task.status = TaskStatus.failed
+        task.finished_at = utc_now()
+        task.message = json.dumps({"message": str(exc), "rows_imported": 0, "rows_updated": 0})
+        session.add(task)
+        session.commit()
+        record_operation(
+            session,
+            action="market_data.fetch_public.failed",
+            actor=current_user.username,
+            target_type="instrument",
+            target_id=str(payload.instrument_id),
+            detail={"frequency": frequency, "message": str(exc), "source": "akshare"},
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    task.status = TaskStatus.succeeded
+    task.finished_at = utc_now()
+    task.message = json.dumps(
+        {
+            "message": "Public data fetch succeeded",
+            "rows_imported": result.rows_imported,
+            "rows_updated": result.rows_updated,
+        }
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+
+    record_operation(
+        session,
+        action="market_data.fetch_public.succeeded",
+        actor=current_user.username,
+        target_type="instrument",
+        target_id=str(payload.instrument_id),
+        detail={
+            "frequency": frequency,
+            "rows_imported": result.rows_imported,
+            "rows_updated": result.rows_updated,
+            "source": "akshare",
         },
     )
     return task_response(task)
