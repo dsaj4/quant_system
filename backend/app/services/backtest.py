@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from datetime import datetime
+from math import sqrt
+from statistics import pstdev
+from typing import Any
 
 from app.models import Bar, StrategyParameterSet
 
@@ -15,6 +19,103 @@ class PortfolioLeg:
     symbol: str
     weight: float
     bars: list[Bar]
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if parsed.tzinfo is not None:
+        return parsed.replace(tzinfo=None)
+    return parsed
+
+
+def _point_value(point: dict[str, Any]) -> float | None:
+    value = point.get("value")
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _round_metric(value: float) -> float:
+    if not isinstance(value, int | float):
+        return 0
+    return round(float(value), 6)
+
+
+def calculate_performance_metrics(
+    *,
+    equity_curve: list[dict[str, Any]],
+    drawdown_curve: list[dict[str, Any]],
+    trades: list[dict[str, Any]],
+) -> dict:
+    values = [_point_value(point) for point in equity_curve]
+    values = [value for value in values if value is not None and value > 0]
+    first_value = values[0] if values else 0
+    last_value = values[-1] if values else 0
+    cumulative_return = (last_value / first_value) - 1 if first_value > 0 and last_value > 0 and len(values) > 1 else 0
+
+    first_timestamp = _parse_timestamp(equity_curve[0].get("timestamp")) if equity_curve else None
+    last_timestamp = _parse_timestamp(equity_curve[-1].get("timestamp")) if equity_curve else None
+    elapsed_days = 0.0
+    if first_timestamp and last_timestamp and last_timestamp > first_timestamp:
+        elapsed_days = (last_timestamp - first_timestamp).total_seconds() / 86400
+
+    annualized_return = 0.0
+    if elapsed_days >= 1 and first_value > 0 and last_value > 0 and len(values) > 1:
+        annualized_return = (last_value / first_value) ** (365 / elapsed_days) - 1
+
+    period_returns = [
+        (current / previous) - 1
+        for previous, current in zip(values, values[1:], strict=False)
+        if previous > 0 and current > 0
+    ]
+    annualized_volatility = 0.0
+    if len(period_returns) > 1 and elapsed_days >= 1:
+        periods_per_year = len(period_returns) * 365 / elapsed_days
+        annualized_volatility = pstdev(period_returns) * sqrt(periods_per_year)
+
+    drawdowns = [
+        float(point["value"])
+        for point in drawdown_curve
+        if isinstance(point, dict) and isinstance(point.get("value"), int | float)
+    ]
+    max_drawdown = min(drawdowns, default=0)
+    drawdown_abs = abs(max_drawdown)
+
+    trade_returns: list[float] = []
+    for trade in trades:
+        change_percent = trade.get("change_percent")
+        pnl_percent = trade.get("pnl_percent")
+        if isinstance(change_percent, int | float):
+            trade_returns.append(float(change_percent) / 100)
+        elif isinstance(pnl_percent, int | float):
+            pnl_value = float(pnl_percent)
+            trade_returns.append(pnl_value if abs(pnl_value) <= 1 else pnl_value / 100)
+
+    wins = [value for value in trade_returns if value > 0]
+    losses = [value for value in trade_returns if value < 0]
+    average_win = sum(wins) / len(wins) if wins else 0
+    average_loss = sum(losses) / len(losses) if losses else 0
+    profit_loss_ratio = average_win / abs(average_loss) if average_win > 0 and average_loss < 0 else 0
+
+    return {
+        "annualized_return": _round_metric(annualized_return),
+        "annualized_volatility": _round_metric(annualized_volatility),
+        "sharpe_ratio": _round_metric(annualized_return / annualized_volatility if annualized_volatility else 0),
+        "calmar_ratio": _round_metric(annualized_return / drawdown_abs if drawdown_abs else 0),
+        "return_drawdown_ratio": _round_metric(cumulative_return / drawdown_abs if drawdown_abs else 0),
+        "average_win": _round_metric(average_win),
+        "average_loss": _round_metric(average_loss),
+        "profit_loss_ratio": _round_metric(profit_loss_ratio),
+    }
 
 
 def run_single_instrument_backtest(
@@ -86,13 +187,19 @@ def run_single_instrument_backtest(
         wins = [trade for trade in trades if trade["side"] == "sell"]
         win_rate = round(len(wins) / len(trades), 6)
 
+    performance_metrics = calculate_performance_metrics(
+        equity_curve=equity_curve,
+        drawdown_curve=drawdown_curve,
+        trades=trades,
+    )
+
     metrics = {
         "bar_count": len(bars),
         "trade_count": len(trades),
         "cumulative_return": cumulative_return,
         "max_drawdown": max_drawdown,
         "win_rate": win_rate,
-        "profit_loss_ratio": 0,
+        **performance_metrics,
     }
     result_payload = {
         "strategy_id": parameter_set.strategy_id,

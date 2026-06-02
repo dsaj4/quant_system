@@ -88,12 +88,22 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
             "strategy_id",
             "backtest_config",
             "report_metadata",
+            "report_summary",
+            "data_summary",
+            "risk_metrics",
+            "trade_summary",
             "assumptions",
             "data_quality",
             "metrics",
             "result_payload",
             "risk_disclosure",
         }.issubset(payload)
+        assert payload["report_summary"]["performance_summary"]
+        assert payload["report_summary"]["risk_summary"]
+        assert payload["report_summary"]["method_summary"]
+        assert payload["data_summary"]["frequency"] == "5m"
+        assert payload["risk_metrics"]["max_drawdown"] == payload["metrics"]["max_drawdown"]
+        assert payload["trade_summary"]["trade_count"] == payload["metrics"]["trade_count"]
         metadata = published["snapshot"]["immutable_payload"]["report_metadata"]
         assert metadata["scope_label"] == "单支股票"
         assert metadata["target_label"] == "TSNAP01"

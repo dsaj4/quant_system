@@ -61,6 +61,42 @@ type DataQuality = {
   message?: string
 }
 
+type ReportSummary = {
+  performance_summary?: string
+  risk_summary?: string
+  method_summary?: string
+}
+
+type DataSummary = {
+  data_source?: string
+  provider?: string
+  frequency?: string
+  adjust?: string | null
+  bar_count?: number
+  period_start?: string | null
+  period_end?: string | null
+}
+
+type RiskMetrics = {
+  max_drawdown?: number
+  annualized_volatility?: number
+  sharpe_ratio?: number
+  calmar_ratio?: number
+  return_drawdown_ratio?: number
+}
+
+type TradeSummary = {
+  trade_count?: number
+  buy_count?: number
+  sell_count?: number
+  win_rate?: number
+  average_win?: number
+  average_loss?: number
+  profit_loss_ratio?: number
+  first_trade_at?: string | null
+  last_trade_at?: string | null
+}
+
 type TechnicalIndicators = {
   ma?: Record<string, Point[] | number[] | undefined>
   macd?: {
@@ -74,8 +110,12 @@ type SnapshotPayload = {
   title: string
   strategy_id: string
   strategy_version: string
-  backtest_config: Record<string, unknown>
+  backtest_config?: Record<string, unknown>
   report_metadata?: ReportMetadata
+  report_summary?: ReportSummary
+  data_summary?: DataSummary
+  risk_metrics?: RiskMetrics
+  trade_summary?: TradeSummary
   assumptions?: ReportAssumptions
   data_quality?: DataQuality
   technical_indicators?: TechnicalIndicators
@@ -87,6 +127,11 @@ type SnapshotPayload = {
     trade_count?: number
     profit_loss_ratio?: number
     sharpe_ratio?: number
+    annualized_volatility?: number
+    calmar_ratio?: number
+    return_drawdown_ratio?: number
+    average_win?: number
+    average_loss?: number
     bar_count?: number
   }
   result_payload: {
@@ -124,6 +169,20 @@ type TooltipItem = {
 
 type BarColorParam = {
   data?: unknown
+}
+
+function normalizePayload(payload: SnapshotPayload, fallbackTitle: string): SnapshotPayload {
+  return {
+    ...payload,
+    title: payload.title ?? fallbackTitle,
+    strategy_id: payload.strategy_id ?? 'unknown',
+    strategy_version: payload.strategy_version ?? '-',
+    backtest_config: payload.backtest_config ?? {},
+    metrics: payload.metrics ?? {},
+    result_payload: payload.result_payload ?? {},
+    generated_at: payload.generated_at ?? '',
+    publisher: payload.publisher ?? '',
+  }
 }
 
 function getShareToken(): string {
@@ -220,7 +279,7 @@ function targetLabel(payload: SnapshotPayload): string {
   if (metadata?.target_label) {
     return metadata.target_label
   }
-  const config = payload.backtest_config
+  const config = payload.backtest_config ?? {}
   if (typeof config.portfolio_name === 'string') {
     return config.portfolio_name
   }
@@ -241,11 +300,11 @@ function scopeLabel(payload: SnapshotPayload): string {
   if (metadata?.scope_label) {
     return metadata.scope_label
   }
-  return payload.backtest_config.portfolio_id ? '固定组合' : '单一标的'
+  return payload.backtest_config?.portfolio_id ? '固定组合' : '单一标的'
 }
 
 function frequencyLabel(payload: SnapshotPayload): string {
-  return String(payload.report_metadata?.frequency ?? payload.assumptions?.frequency ?? payload.backtest_config.frequency ?? '-')
+  return String(payload.report_metadata?.frequency ?? payload.assumptions?.frequency ?? payload.backtest_config?.frequency ?? '-')
 }
 
 function tradeValue(trade: Record<string, unknown>, key: string): string {
@@ -337,7 +396,7 @@ function metricTone(value?: number, negativeIsGood = false): Tone {
 }
 
 function ReportHero({ snapshot }: { snapshot: PublicSnapshot }) {
-  const payload = snapshot.payload
+  const payload = normalizePayload(snapshot.payload, snapshot.title)
   const metadata = payload.report_metadata
   const warnings = metadata?.warnings ?? []
   const period = metadata?.backtest_period
@@ -400,6 +459,7 @@ function ReportHero({ snapshot }: { snapshot: PublicSnapshot }) {
 
 function MetricStrip({ payload }: { payload: SnapshotPayload }) {
   const metrics = payload.metrics
+  const riskMetrics = payload.risk_metrics ?? {}
   const items: Array<{ label: string; value: string; hint: string; tone: Tone }> = [
     {
       label: '累计收益',
@@ -432,6 +492,12 @@ function MetricStrip({ payload }: { payload: SnapshotPayload }) {
       tone: metricTone((metrics.profit_loss_ratio ?? 0) - 1),
     },
     {
+      label: '夏普比率',
+      value: formatRatio(metrics.sharpe_ratio ?? riskMetrics.sharpe_ratio),
+      hint: '年化收益/波动',
+      tone: metricTone(metrics.sharpe_ratio ?? riskMetrics.sharpe_ratio),
+    },
+    {
       label: '交易次数',
       value: formatNumber(metrics.trade_count, 0),
       hint: `${formatNumber(metrics.bar_count ?? payload.data_quality?.bar_count, 0)} 根样本 K 线`,
@@ -448,6 +514,63 @@ function MetricStrip({ payload }: { payload: SnapshotPayload }) {
           <em>{item.hint}</em>
         </article>
       ))}
+    </section>
+  )
+}
+
+function ReportSummaryPanel({ payload }: { payload: SnapshotPayload }) {
+  const summary = payload.report_summary
+  const data = payload.data_summary
+  const risk = payload.risk_metrics ?? {}
+  const trade = payload.trade_summary
+  const metrics = payload.metrics
+  const cards = [
+    {
+      label: '表现解读',
+      value:
+        summary?.performance_summary ??
+        `${targetLabel(payload)} 累计收益 ${formatPercent(metrics.cumulative_return)}，最大回撤 ${formatPercent(metrics.max_drawdown)}。`,
+    },
+    {
+      label: '风险解读',
+      value:
+        summary?.risk_summary ??
+        `年化波动 ${formatPercent(metrics.annualized_volatility ?? risk.annualized_volatility)}，Calmar ${formatRatio(metrics.calmar_ratio ?? risk.calmar_ratio)}。`,
+    },
+    {
+      label: '方法说明',
+      value:
+        summary?.method_summary ??
+        `周期 ${frequencyLabel(payload)}，复权 ${data?.adjust || '未指定'}，数据源 ${data?.provider ?? payload.assumptions?.data_source ?? '已存储K线'}。`,
+    },
+  ]
+  const facts = [
+    ['数据源', data?.provider ?? payload.assumptions?.data_source ?? '已存储K线'],
+    ['复权', data?.adjust || '未指定'],
+    ['样本', `${formatNumber(data?.bar_count ?? payload.data_quality?.bar_count ?? metrics.bar_count, 0)} 根K线`],
+    ['交易', `${formatNumber(trade?.trade_count ?? metrics.trade_count, 0)} 笔 · 买 ${formatNumber(trade?.buy_count, 0)} / 卖 ${formatNumber(trade?.sell_count, 0)}`],
+    ['波动率', formatPercent(metrics.annualized_volatility ?? risk.annualized_volatility)],
+    ['收益回撤比', formatRatio(metrics.return_drawdown_ratio ?? risk.return_drawdown_ratio)],
+  ]
+
+  return (
+    <section className="summary-panel">
+      <div className="summary-copy">
+        {cards.map((item) => (
+          <article key={item.label}>
+            <span className="section-label">{item.label}</span>
+            <p>{item.value}</p>
+          </article>
+        ))}
+      </div>
+      <div className="summary-facts">
+        {facts.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
@@ -1011,6 +1134,8 @@ function PositionPanel({ points }: { points: Point[] }) {
 
 function DrawdownSummary({ payload }: { payload: SnapshotPayload }) {
   const status = payload.data_quality?.status
+  const metrics = payload.metrics
+  const risk = payload.risk_metrics ?? {}
   return (
     <section className="panel risk-panel">
       <header>
@@ -1021,16 +1146,18 @@ function DrawdownSummary({ payload }: { payload: SnapshotPayload }) {
         <strong>{status === 'warning' ? '需谨慎解读' : '已记录'}</strong>
       </header>
       <div className="risk-stat">
-        <strong>{formatPercent(payload.metrics.max_drawdown)}</strong>
+        <strong>{formatPercent(metrics.max_drawdown ?? risk.max_drawdown)}</strong>
         <span>
-          该值来自已发布快照中的回撤序列。若样本过短或覆盖市场阶段单一，实际风险可能被低估。
+          年化波动 {formatPercent(metrics.annualized_volatility ?? risk.annualized_volatility)}，
+          Calmar {formatRatio(metrics.calmar_ratio ?? risk.calmar_ratio)}。
+          若样本过短或覆盖市场阶段单一，实际风险可能被低估。
         </span>
       </div>
     </section>
   )
 }
 
-function TradeTable({ trades }: { trades: Array<Record<string, unknown>> }) {
+function TradeTable({ trades, summary }: { trades: Array<Record<string, unknown>>; summary?: TradeSummary }) {
   return (
     <section className="panel trade-panel wide">
       <header>
@@ -1038,8 +1165,17 @@ function TradeTable({ trades }: { trades: Array<Record<string, unknown>> }) {
           <span className="section-label">交易明细</span>
           <h2>模拟交易记录</h2>
         </div>
-        <strong>{formatNumber(trades.length, 0)} 笔</strong>
+        <strong>
+          {formatNumber(summary?.trade_count ?? trades.length, 0)} 笔 · 胜率 {formatPercent(summary?.win_rate)}
+        </strong>
       </header>
+      <div className="trade-summary-row">
+        <span>买入 {formatNumber(summary?.buy_count, 0)}</span>
+        <span>卖出 {formatNumber(summary?.sell_count, 0)}</span>
+        <span>平均盈利 {formatPercent(summary?.average_win)}</span>
+        <span>平均亏损 {formatPercent(summary?.average_loss)}</span>
+        <span>盈亏比 {formatRatio(summary?.profit_loss_ratio)}</span>
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1221,19 +1357,20 @@ function App() {
     )
   }
 
-  const payload = snapshot.payload
+  const payload = normalizePayload(snapshot.payload, snapshot.title)
   const result = payload.result_payload
 
   return (
     <main className="report-page">
       <ReportHero snapshot={snapshot} />
       <MetricStrip payload={payload} />
+      <ReportSummaryPanel payload={payload} />
       <div className="analysis-grid">
         <EquityPanel payload={payload} />
         <CandlePanel payload={payload} />
         <PositionPanel points={result.position_curve ?? []} />
         <DrawdownSummary payload={payload} />
-        <TradeTable trades={result.trade_table ?? []} />
+        <TradeTable trades={result.trade_table ?? []} summary={payload.trade_summary} />
         <AssumptionsPanel payload={payload} />
       </div>
       <RiskDisclosure payload={payload} />

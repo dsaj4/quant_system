@@ -185,6 +185,98 @@ def build_data_quality_summary(backtest: BacktestRun) -> dict:
     }
 
 
+def build_report_summary(backtest: BacktestRun) -> dict:
+    metrics = backtest.metrics or {}
+    config = backtest.config or {}
+    cumulative_return = metrics.get("cumulative_return")
+    max_drawdown = metrics.get("max_drawdown")
+    annualized_return = metrics.get("annualized_return")
+    trade_count = int(metrics.get("trade_count") or 0)
+    target = (
+        config.get("portfolio_name")
+        or config.get("instrument_symbol")
+        or (f"组合 #{config.get('portfolio_id')}" if config.get("portfolio_id") else None)
+        or (f"标的 #{config.get('instrument_id')}" if config.get("instrument_id") else "当前标的")
+    )
+
+    return {
+        "performance_summary": (
+            f"{target} 本次回测累计收益为 {cumulative_return:.2%}，"
+            f"年化收益为 {annualized_return:.2%}。"
+            if isinstance(cumulative_return, int | float) and isinstance(annualized_return, int | float)
+            else f"{target} 本次回测已生成，但收益指标不完整。"
+        ),
+        "risk_summary": (
+            f"最大回撤为 {max_drawdown:.2%}，需要结合样本区间和市场环境解读。"
+            if isinstance(max_drawdown, int | float)
+            else "最大回撤指标暂缺，需要结合原始曲线解读。"
+        ),
+        "method_summary": (
+            f"报告基于已发布快照生成，周期为 {config.get('frequency', '未记录')}，"
+            f"复权参数为 {config.get('adjust') if config.get('adjust') is not None else '未指定'}，"
+            f"共记录 {trade_count} 笔模拟交易。"
+        ),
+    }
+
+
+def build_data_summary(backtest: BacktestRun) -> dict:
+    config = backtest.config or {}
+    metrics = backtest.metrics or {}
+    result_payload = backtest.result_payload or {}
+    period = extract_backtest_period(result_payload)
+    return {
+        "data_source": config.get("data_source", "stored_bars"),
+        "provider": config.get("provider") or config.get("data_provider") or config.get("data_source", "stored_bars"),
+        "frequency": config.get("frequency", "5m"),
+        "adjust": config.get("adjust"),
+        "bar_count": int(metrics.get("bar_count") or 0),
+        "period_start": period.get("start"),
+        "period_end": period.get("end"),
+    }
+
+
+def build_risk_metrics(backtest: BacktestRun) -> dict:
+    metrics = backtest.metrics or {}
+    return {
+        "max_drawdown": metrics.get("max_drawdown", 0),
+        "annualized_volatility": metrics.get("annualized_volatility", 0),
+        "sharpe_ratio": metrics.get("sharpe_ratio", 0),
+        "calmar_ratio": metrics.get("calmar_ratio", 0),
+        "return_drawdown_ratio": metrics.get("return_drawdown_ratio", 0),
+    }
+
+
+def build_trade_summary(backtest: BacktestRun) -> dict:
+    metrics = backtest.metrics or {}
+    result_payload = backtest.result_payload or {}
+    trade_table = result_payload.get("trade_table") or []
+    buy_count = 0
+    sell_count = 0
+    timestamps = []
+    for trade in trade_table:
+        if not isinstance(trade, dict):
+            continue
+        side = str(trade.get("side", "")).lower()
+        if side == "buy":
+            buy_count += 1
+        elif side == "sell":
+            sell_count += 1
+        if trade.get("timestamp"):
+            timestamps.append(trade["timestamp"])
+
+    return {
+        "trade_count": int(metrics.get("trade_count") or len(trade_table)),
+        "buy_count": buy_count,
+        "sell_count": sell_count,
+        "win_rate": metrics.get("win_rate", 0),
+        "average_win": metrics.get("average_win", 0),
+        "average_loss": metrics.get("average_loss", 0),
+        "profit_loss_ratio": metrics.get("profit_loss_ratio", 0),
+        "first_trade_at": timestamps[0] if timestamps else None,
+        "last_trade_at": timestamps[-1] if timestamps else None,
+    }
+
+
 def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) -> dict:
     report_metadata = build_report_metadata(backtest, title, publisher)
     return {
@@ -195,6 +287,10 @@ def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) 
         "backtest_run_id": backtest.id,
         "backtest_config": backtest.config,
         "report_metadata": report_metadata,
+        "report_summary": build_report_summary(backtest),
+        "data_summary": build_data_summary(backtest),
+        "risk_metrics": build_risk_metrics(backtest),
+        "trade_summary": build_trade_summary(backtest),
         "assumptions": build_report_assumptions(backtest),
         "data_quality": build_data_quality_summary(backtest),
         "metrics": backtest.metrics,

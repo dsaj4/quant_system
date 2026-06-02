@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
+from pytest import approx
 
 from app.main import app
+from app.services.backtest import calculate_performance_metrics
 
 
 def login_token(client: TestClient) -> str:
@@ -82,6 +84,52 @@ def create_portfolio(client: TestClient, token: str, positions: list[dict]) -> i
     )
     assert response.status_code == 200
     return response.json()["id"]
+
+
+def test_performance_metrics_include_annualized_risk_and_trade_summaries() -> None:
+    metrics = calculate_performance_metrics(
+        equity_curve=[
+            {"timestamp": "2025-01-01T00:00:00", "value": 100.0},
+            {"timestamp": "2025-07-02T00:00:00", "value": 105.0},
+            {"timestamp": "2026-01-01T00:00:00", "value": 110.0},
+        ],
+        drawdown_curve=[
+            {"timestamp": "2025-01-01T00:00:00", "value": 0.0},
+            {"timestamp": "2025-07-02T00:00:00", "value": -0.02},
+            {"timestamp": "2026-01-01T00:00:00", "value": 0.0},
+        ],
+        trades=[
+            {"change_percent": 2.0},
+            {"change_percent": -1.0},
+            {"change_percent": 4.0},
+        ],
+    )
+
+    assert metrics["annualized_return"] == approx(0.1, abs=0.002)
+    assert metrics["annualized_volatility"] > 0
+    assert metrics["sharpe_ratio"] > 0
+    assert metrics["calmar_ratio"] == approx(5, abs=0.1)
+    assert metrics["return_drawdown_ratio"] == approx(5, abs=0.1)
+    assert metrics["average_win"] == approx(0.03)
+    assert metrics["average_loss"] == approx(-0.01)
+    assert metrics["profit_loss_ratio"] == approx(3)
+
+
+def test_performance_metrics_handle_empty_or_flat_series() -> None:
+    metrics = calculate_performance_metrics(
+        equity_curve=[{"timestamp": "2025-01-01T00:00:00", "value": 100.0}],
+        drawdown_curve=[],
+        trades=[],
+    )
+
+    assert metrics["annualized_return"] == 0
+    assert metrics["annualized_volatility"] == 0
+    assert metrics["sharpe_ratio"] == 0
+    assert metrics["calmar_ratio"] == 0
+    assert metrics["return_drawdown_ratio"] == 0
+    assert metrics["average_win"] == 0
+    assert metrics["average_loss"] == 0
+    assert metrics["profit_loss_ratio"] == 0
 
 
 def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
