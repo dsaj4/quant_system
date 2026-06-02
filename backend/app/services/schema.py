@@ -11,6 +11,25 @@ class SchemaReport:
     status: str
     missing_tables: list[str]
     missing_columns: dict[str, list[str]]
+    dialect: str
+    migration_status: str
+    migration_revision: str | None
+    development_fallback_enabled: bool
+
+
+def _migration_state(engine: Engine, existing_tables: set[str]) -> tuple[str, str | None]:
+    if "alembic_version" not in existing_tables:
+        return "not_versioned", None
+
+    try:
+        with engine.connect() as connection:
+            revisions = connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all()
+    except Exception:
+        return "unreadable", None
+
+    if not revisions:
+        return "empty_version_table", None
+    return "versioned", str(revisions[-1])
 
 
 def check_database_schema(engine: Engine) -> SchemaReport:
@@ -31,7 +50,16 @@ def check_database_schema(engine: Engine) -> SchemaReport:
             missing_columns[table_name] = missing
 
     status = "ok" if not missing_tables and not missing_columns else "mismatch"
-    return SchemaReport(status=status, missing_tables=missing_tables, missing_columns=missing_columns)
+    migration_status, migration_revision = _migration_state(engine, existing_tables)
+    return SchemaReport(
+        status=status,
+        missing_tables=missing_tables,
+        missing_columns=missing_columns,
+        dialect=engine.dialect.name,
+        migration_status=migration_status,
+        migration_revision=migration_revision,
+        development_fallback_enabled=engine.dialect.name == "sqlite",
+    )
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -147,5 +175,8 @@ def _rebuild_bar_table_with_adjust_identity(engine: Engine) -> None:
 
 
 def upgrade_database_schema(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+
     _add_missing_columns(engine)
     _rebuild_bar_table_with_adjust_identity(engine)

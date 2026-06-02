@@ -18,10 +18,11 @@ engine = create_engine(settings.database_url, connect_args=connect_args)
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(engine)
-    from app.services.schema import upgrade_database_schema
+    if engine.dialect.name == "sqlite":
+        SQLModel.metadata.create_all(engine)
+        from app.services.schema import upgrade_database_schema
 
-    upgrade_database_schema(engine)
+        upgrade_database_schema(engine)
     from app.services.bootstrap import seed_data_source_providers, seed_default_admin
 
     with Session(engine) as session:

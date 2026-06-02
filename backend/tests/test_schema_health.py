@@ -35,6 +35,9 @@ def test_health_reports_database_schema_status() -> None:
         assert provider_details["jqdata"]["is_enabled"] is False
         assert provider_details["akshare"]["adapter_available"] is True
         assert payload["schema"]["status"] == "ok"
+        assert payload["schema"]["dialect"] == "sqlite"
+        assert payload["schema"]["migration_status"] in {"not_versioned", "versioned"}
+        assert payload["schema"]["development_fallback_enabled"] is True
         assert payload["schema"]["missing_tables"] == []
         assert payload["schema"]["missing_columns"] == {}
 

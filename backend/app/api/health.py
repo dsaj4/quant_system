@@ -71,6 +71,10 @@ def health_check(session: SessionDep) -> dict[str, object]:
         },
         "schema": {
             "status": schema_report.status,
+            "dialect": schema_report.dialect,
+            "migration_status": schema_report.migration_status,
+            "migration_revision": schema_report.migration_revision,
+            "development_fallback_enabled": schema_report.development_fallback_enabled,
             "missing_tables": schema_report.missing_tables,
             "missing_columns": schema_report.missing_columns,
         },

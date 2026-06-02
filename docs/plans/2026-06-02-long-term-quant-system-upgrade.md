@@ -818,7 +818,7 @@ API 和数据影响：
 | Phase 3 管理端数据工作流 | verified | provider/adjust/frequency 表单、导入结果、状态展示 | 管理端构建、API 测试、端到端操作 smoke |
 | Phase 4 数据质量与交易日历 | verified | 交易日历、缺失数据 warning、质量摘要 | 数据质量测试、报告 warning 验证 |
 | Phase 5 指标层和策略解释 | verified | 指标服务、策略信号解释、snapshot 指标字段 | 指标样例测试、报告展示验证 |
-| Phase 6 数据库与运维硬化 | pending | Alembic baseline、迁移文档、Postgres/TimescaleDB 路线 | migration 空库验证、SQLite 回归测试 |
+| Phase 6 数据库与运维硬化 | verified | Alembic baseline、迁移文档、Postgres/TimescaleDB 路线 | migration 空库验证、SQLite 回归测试 |
 | Phase 7 模拟交易与监控成熟化 | pending | PaperSignal/PaperTrade、调度记录、失败状态 | paper run 状态流转测试、管理端 smoke |
 | Phase 8 演示打包与交付治理 | pending | demo runbook、客户讲解口径、交付 checklist | 按 runbook 复跑、全量测试与构建 |
 
