@@ -1,14 +1,49 @@
 # Quant System 项目整理文档
 
 日期：2026-06-02  
-状态：项目状态梳理 + 薄弱点自查 + 下一阶段修改草案  
-边界：本文档只做系统分析与修改草案，不代表已经批准正式修改。
+状态：项目状态梳理 + 薄弱点自查 + 长期改造执行后摘要
+边界：本文档保留原系统分析口径，并追加 Phase 0 到 Phase 8 执行后的当前状态。
 
 相关执行文档：
 
 - [长期无人值守改造总规范](plans/2026-06-02-long-term-quant-system-upgrade.md)
 - [Demo Runbook](demo-runbook.md)
+- [Demo Checklist](demo-checklist.md)
+- [Customer Demo Talk Track](customer-demo-talk-track.md)
 - [Phase 0 Baseline Record](stage-records/phase-0-baseline.md)
+
+## 0. 长期改造执行后状态
+
+截至 2026-06-02，长期改造 Phase 0 到 Phase 8 已按阶段推进并记录：
+
+| Phase | 当前状态 | 核心结果 |
+|---|---|---|
+| Phase 0 | verified | 固化 demo runbook、基础 smoke 和阶段记录 |
+| Phase 1 | verified | 客户报告 payload、指标区、交易披露、风险说明成熟化 |
+| Phase 2 | verified | 回测引擎支持资金、仓位、费用、滑点、基准和订单明细 |
+| Phase 3 | verified | 管理端数据工作流默认 Tushare，支持 provider/frequency/adjust 展示 |
+| Phase 4 | verified | 数据质量和交易日历 warning 进入 API、回测和报告 |
+| Phase 5 | verified | 后端指标服务、信号解释、snapshot 指标字段和报告展示 |
+| Phase 6 | verified | Alembic baseline、数据库路线文档、health migration 状态 |
+| Phase 7 | verified | paper run 状态流转、模拟信号/成交、失败原因和管理端监控展示 |
+| Phase 8 | verified | 演示 runbook、checklist、客户讲解口径和最终交付治理 |
+
+当前最适合客户展示的主线是：
+
+```text
+管理端导入/拉取行情
+  -> 运行 rolling_t_grid 回测
+  -> 复核指标、信号、交易表和数据质量
+  -> 发布不可变客户报告
+  -> 展示 paper run 监控记录和失败原因
+```
+
+仍需明确的边界：
+
+- 系统不接实盘券商，不做自动下单。
+- 回测和 paper run 都是模拟，不构成收益承诺。
+- JQData 未购买，BaoStock 未实现正式 adapter。
+- SQLite 仍是默认 demo 数据库；PostgreSQL/TimescaleDB 是后续生产化路线。
 
 ## 1. 一句话定位
 

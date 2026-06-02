@@ -22,6 +22,15 @@ git status --short
 
 ## 2. 后端启动
 
+从项目根目录启动（推荐）：
+
+```powershell
+cd E:\Project\quant
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+或从 `backend` 目录启动：
+
 工作目录：
 
 ```powershell
@@ -39,6 +48,7 @@ cd E:\Project\quant\backend
 - 如果 `8001` 被占用，可以换一个空闲端口，但前端 API 地址也要同步调整。
 - 如果报告接口返回 404，优先检查是否连接了正确的本地数据库。
 - 如果 health 标记 Tushare 未配置，说明本地 token 没有被当前后端进程读取。
+- 新环境如需走正式 schema 初始化，可先执行 `.\.venv\Scripts\python.exe -m alembic upgrade head`。
 
 ## 3. 管理端启动
 
@@ -115,7 +125,34 @@ http://127.0.0.1:<display-port>/?token=<share-token>
 - 报告显示数据源、复权、区间、假设和风险披露。
 - 浏览器控制台没有新增错误。
 
-## 6. 常见问题
+## 6. 离线 CSV demo 路径
+
+当 Tushare token、网络或额度不稳定时，可以用固定 CSV 复跑完整流程。示例数据：
+
+```csv
+timestamp,open,high,low,close,volume
+2026-01-02 09:35:00,10,10.5,9.8,10.0,1000
+2026-01-02 09:40:00,10.0,10.7,9.9,10.4,1200
+2026-01-02 09:45:00,10.4,10.9,10.2,10.8,1500
+2026-01-02 09:50:00,10.8,10.9,10.1,10.2,1300
+2026-01-02 09:55:00,10.2,10.6,10.0,10.5,1100
+```
+
+推荐流程：
+
+1. 管理端创建一个演示标的，例如 `DEMO001.SH`。
+2. 在行情数据模块使用 CSV 导入，frequency 选择 `5m`。
+3. 使用 `rolling_t_grid` 参数集运行回测。
+4. 发布 snapshot 并打开客户报告。
+5. 再运行一次模拟运行，确认管理端 paper run 表显示信号、模拟成交和状态流转。
+
+验收重点：
+
+- 回测报告能显示指标、K 线、交易表、风险披露。
+- paper run 成功记录包含 `pending -> running -> succeeded`。
+- 故意选择无 K 线标的运行 paper run 时，应生成 failed 记录和失败原因。
+
+## 7. 常见问题
 
 ### 报告 404
 
@@ -151,7 +188,7 @@ http://127.0.0.1:<display-port>/?token=<share-token>
 - payload 是否包含 `candles`、`equity_curve` 或交易数据。
 - 浏览器控制台是否有脚本错误。
 
-## 7. 发布前验证命令
+## 8. 发布前验证命令
 
 后端：
 
@@ -179,3 +216,11 @@ npm.cmd run build
 - 使用最小必要区间。
 - 记录目标、日期区间、返回行数。
 - 不在日志或文档中写入 token。
+
+## 9. 演示边界
+
+- 客户展示端是只读报告，不允许客户改参数或触发交易。
+- paper run 是模拟监控，不是实盘下单。
+- 当前默认数据库仍是 SQLite；PostgreSQL/TimescaleDB 是后续生产化路线。
+- JQData 暂未购买，BaoStock 第一版仅预留 registry，不宣称已接通。
+- 分享链接 token 不写入文档、commit 或截图说明。
