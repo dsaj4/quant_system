@@ -168,6 +168,9 @@ const statusText: Record<string, string> = {
   running: '运行中',
   succeeded: '成功',
   failed: '失败',
+  executed: '已执行',
+  blocked_by_ma_filter: '均线过滤',
+  skipped_no_available_cash_or_position: '资金/仓位不足',
   published: '已发布',
   revoked: '已撤销',
   draft: '草稿',
@@ -923,6 +926,7 @@ function App() {
   const selectedEquity = selectedBacktest?.result_payload.equity_curve ?? []
   const selectedDrawdown = selectedBacktest?.result_payload.drawdown_curve ?? []
   const selectedPosition = selectedBacktest?.result_payload.position_curve ?? []
+  const selectedSignal = selectedBacktest?.result_payload.signal_summary
 
   const loginPanel = (
     <main className="login-shell">
@@ -1547,6 +1551,27 @@ function App() {
                       render: (metrics: BacktestRun['metrics']) => metrics.trade_count ?? 0,
                     },
                     {
+                      title: '信号',
+                      dataIndex: 'result_payload',
+                      width: 180,
+                      render: (payload: BacktestRun['result_payload']) => {
+                        const signal = payload.signal_summary
+                        if (!signal) {
+                          return '-'
+                        }
+                        return (
+                          <Space size={4} wrap>
+                            <Tag color={signal.latest_signal === 'buy' ? 'green' : 'volcano'}>
+                              {tStatus(signal.latest_signal)}
+                            </Tag>
+                            <Text type="secondary">
+                              执行 {signal.executed_signal_count ?? 0} / 拦截 {signal.blocked_signal_count ?? 0}
+                            </Text>
+                          </Space>
+                        )
+                      },
+                    },
+                    {
                       title: '权益点数',
                       dataIndex: 'result_payload',
                       width: 130,
@@ -1622,7 +1647,25 @@ function App() {
                         <Text type="secondary">盈亏比</Text>
                         <strong>{formatNumber(selectedBacktest.metrics.profit_loss_ratio)}</strong>
                       </div>
+                      <div>
+                        <Text type="secondary">最新信号</Text>
+                        <strong>{tStatus(selectedSignal?.latest_signal)}</strong>
+                      </div>
+                      <div>
+                        <Text type="secondary">执行/拦截</Text>
+                        <strong>
+                          {selectedSignal?.executed_signal_count ?? 0} / {selectedSignal?.blocked_signal_count ?? 0}
+                        </strong>
+                      </div>
                     </div>
+                    {selectedSignal ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        title={`信号决策：${tStatus(selectedSignal.latest_decision)}`}
+                        description={selectedSignal.latest_reason ?? '当前回测未记录信号解释。'}
+                      />
+                    ) : null}
                     <div className="review-chart-grid">
                       <div className="review-chart-panel">
                         <div>

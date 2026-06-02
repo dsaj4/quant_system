@@ -207,6 +207,17 @@ export type BacktestRun = {
     trade_markers?: Array<{ timestamp: string; side: string; price: number }>
     trade_table?: Array<Record<string, unknown>>
     risk_disclosure?: string
+    signal_summary?: {
+      latest_signal?: string
+      latest_decision?: string
+      latest_reason?: string
+      signal_count?: number
+      executed_signal_count?: number
+      blocked_signal_count?: number
+      grid_percent?: number
+      ma_filter_enabled?: boolean
+      ma_window?: number
+    }
   }
   message: string
   created_at: string

@@ -95,6 +95,9 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
             "assumptions",
             "data_quality",
             "metrics",
+            "technical_indicators",
+            "indicator_summary",
+            "signal_summary",
             "result_payload",
             "risk_disclosure",
         }.issubset(payload)
@@ -104,6 +107,8 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
         assert payload["data_summary"]["frequency"] == "5m"
         assert payload["risk_metrics"]["max_drawdown"] == payload["metrics"]["max_drawdown"]
         assert payload["trade_summary"]["trade_count"] == payload["metrics"]["trade_count"]
+        assert payload["technical_indicators"] == payload["result_payload"]["technical_indicators"]
+        assert payload["signal_summary"] == payload["result_payload"]["signal_summary"]
         metadata = published["snapshot"]["immutable_payload"]["report_metadata"]
         assert metadata["scope_label"] == "单支股票"
         assert metadata["target_label"] == "TSNAP01"

@@ -5,6 +5,7 @@ from statistics import pstdev
 from typing import Any
 
 from app.models import Bar, StrategyParameterSet
+from app.services.indicators import build_technical_indicators, latest_indicator_summary, moving_average_at
 
 
 @dataclass(frozen=True)
@@ -132,23 +133,47 @@ def _rate_parameter(parameters: dict, name: str, default: float = 0.0) -> float:
     return max(0.0, float(value))
 
 
-def _moving_average(bars: list[Bar], index: int, window: int) -> float | None:
-    if window <= 1 or index + 1 < window:
-        return None
-    closes = [bar.close for bar in bars[index + 1 - window : index + 1]]
-    return sum(closes) / len(closes)
-
-
-def _ma_filter_allows_trade(*, side: str, bars: list[Bar], index: int, window: int) -> bool:
-    moving_average = _moving_average(bars, index, window)
+def _ma_filter_payload(*, side: str, bars: list[Bar], index: int, window: int) -> dict[str, Any]:
+    moving_average = moving_average_at(bars, index, window)
+    payload = {
+        "enabled": True,
+        "window": window,
+        "value": round(moving_average, 6) if moving_average is not None else None,
+        "passed": True,
+        "rule": "ma_filter",
+    }
     if moving_average is None:
-        return True
+        payload["rule"] = "insufficient_history_allows_trade"
+        return payload
+
     close = bars[index].close
     if side == "sell":
-        return close >= moving_average
+        payload["passed"] = close >= moving_average
+        payload["rule"] = "sell_only_when_close_above_ma"
+        return payload
     if side == "buy":
-        return close <= moving_average
-    return True
+        payload["passed"] = close <= moving_average
+        payload["rule"] = "buy_only_when_close_below_ma"
+        return payload
+    return payload
+
+
+def _disabled_ma_filter_payload(window: int) -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "window": window,
+        "value": None,
+        "passed": True,
+        "rule": "disabled",
+    }
+
+
+def _grid_signal_reason(*, side: str, change_percent: float, reference_close: float, grid_percent: float) -> str:
+    direction = "above" if side == "sell" else "below"
+    return (
+        f"Price moved {abs(change_percent):.4f}% {direction} reference "
+        f"{reference_close:.6f}; grid threshold is {grid_percent:.4f}%."
+    )
 
 
 def run_single_instrument_backtest(
@@ -172,7 +197,7 @@ def run_single_instrument_backtest(
     slippage_bps = _rate_parameter(parameters, "slippage_bps")
     slippage_rate = slippage_bps / 10000
     enable_ma_filter = bool(parameters.get("enable_ma_filter", False))
-    ma_window = int(parameters.get("ma_window", 20) or 20)
+    ma_window = max(1, int(parameters.get("ma_window", 20) or 20))
 
     cash = float(initial_cash)
     position_qty = 0.0
@@ -193,6 +218,7 @@ def run_single_instrument_backtest(
     candles = []
     trade_markers = []
     trades = []
+    signal_events = []
 
     reference_close = first_close
 
@@ -205,9 +231,34 @@ def run_single_instrument_backtest(
         if index > 0:
             change_percent = ((bar.close - reference_close) / reference_close) * 100
             side = "sell" if change_percent > 0 else "buy"
-            should_trade = abs(change_percent) >= grid_percent
-            if should_trade and enable_ma_filter:
-                should_trade = _ma_filter_allows_trade(side=side, bars=bars, index=index, window=ma_window)
+            crosses_grid = abs(change_percent) >= grid_percent
+            should_trade = crosses_grid
+            ma_filter = _disabled_ma_filter_payload(ma_window)
+            signal_event = None
+            if crosses_grid:
+                if enable_ma_filter:
+                    ma_filter = _ma_filter_payload(side=side, bars=bars, index=index, window=ma_window)
+                    should_trade = bool(ma_filter["passed"])
+                signal_event = {
+                    "timestamp": timestamp,
+                    "side": side,
+                    "price": bar.close,
+                    "reference_price": round(reference_close, 6),
+                    "change_percent": round(change_percent, 4),
+                    "threshold_percent": round(grid_percent, 4),
+                    "reason": "grid_threshold",
+                    "reason_detail": _grid_signal_reason(
+                        side=side,
+                        change_percent=change_percent,
+                        reference_close=reference_close,
+                        grid_percent=grid_percent,
+                    ),
+                    "ma_filter": ma_filter,
+                    "decision": "pending",
+                }
+                if not should_trade:
+                    signal_event["decision"] = "blocked_by_ma_filter"
+                    signal_events.append(signal_event)
 
             if should_trade:
                 pre_trade_equity = cash + position_qty * bar.close
@@ -237,7 +288,12 @@ def run_single_instrument_backtest(
                 if quantity > 0:
                     equity_after = cash + position_qty * bar.close
                     position_after = (position_qty * bar.close / equity_after * 100) if equity_after > 0 else 0
-                    marker = {"timestamp": timestamp, "side": side, "price": bar.close}
+                    marker = {
+                        "timestamp": timestamp,
+                        "side": side,
+                        "price": bar.close,
+                        "reason": signal_event["reason"] if signal_event else "grid_threshold",
+                    }
                     trade = {
                         "timestamp": timestamp,
                         "side": side,
@@ -252,10 +308,28 @@ def run_single_instrument_backtest(
                         "position_after": round(position_after, 6),
                         "change_percent": round(change_percent, 4),
                         "reason": "grid_threshold",
+                        "reason_detail": signal_event["reason_detail"] if signal_event else "Grid threshold reached.",
+                        "reference_price": round(reference_close, 6),
+                        "threshold_percent": round(grid_percent, 4),
+                        "ma_filter": ma_filter,
                     }
                     trade_markers.append(marker)
                     trades.append(trade)
+                    if signal_event:
+                        signal_event.update(
+                            {
+                                "decision": "executed",
+                                "execution_price": round(execution_price, 6),
+                                "quantity": round(quantity, 6),
+                                "fee": round(fee, 6),
+                                "slippage": round(slippage, 6),
+                            }
+                        )
+                        signal_events.append(signal_event)
                     reference_close = bar.close
+                elif signal_event:
+                    signal_event["decision"] = "skipped_no_available_cash_or_position"
+                    signal_events.append(signal_event)
 
         equity = round(cash + position_qty * bar.close, 2)
         benchmark_value = round(initial_cash * (bar.close / first_close), 2)
@@ -292,6 +366,9 @@ def run_single_instrument_backtest(
         drawdown_curve=drawdown_curve,
         trades=trades,
     )
+    technical_indicators = build_technical_indicators(bars)
+    latest_trade = trades[-1] if trades else None
+    latest_signal_event = signal_events[-1] if signal_events else None
 
     metrics = {
         "bar_count": len(bars),
@@ -312,6 +389,25 @@ def run_single_instrument_backtest(
         "position_curve": position_curve,
         "trade_table": trades,
         "orders": trades,
+        "technical_indicators": technical_indicators,
+        "indicator_summary": latest_indicator_summary(technical_indicators),
+        "signal_events": signal_events,
+        "signal_summary": {
+            "strategy_id": parameter_set.strategy_id,
+            "latest_signal": latest_trade["side"] if latest_trade else "hold",
+            "latest_decision": latest_signal_event["decision"] if latest_signal_event else "hold",
+            "latest_reason": (
+                latest_signal_event["reason_detail"] if latest_signal_event else "No grid threshold signal generated."
+            ),
+            "signal_count": len(signal_events),
+            "executed_signal_count": len(trades),
+            "blocked_signal_count": len(
+                [event for event in signal_events if event.get("decision") == "blocked_by_ma_filter"]
+            ),
+            "grid_percent": grid_percent,
+            "ma_filter_enabled": enable_ma_filter,
+            "ma_window": ma_window,
+        },
         "execution_assumptions": {
             "initial_cash": initial_cash,
             "base_position_percent": round(base_position_percent * 100, 6),

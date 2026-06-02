@@ -560,6 +560,46 @@ td {
   font-weight: 700;
 }
 
+.signal-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #dbe5ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.signal-summary-row div {
+  min-width: 0;
+}
+
+.signal-summary-row span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.signal-summary-row strong {
+  display: block;
+  color: #101828;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.signal-summary-row p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
 .assumption-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -663,6 +703,7 @@ dd {
   .summary-copy,
   .summary-facts,
   .metric-strip,
+  .signal-summary-row,
   .analysis-grid,
   .assumption-grid {
     grid-template-columns: 1fr;

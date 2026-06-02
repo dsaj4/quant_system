@@ -110,6 +110,18 @@ type TechnicalIndicators = {
   }
 }
 
+type SignalSummary = {
+  latest_signal?: string
+  latest_decision?: string
+  latest_reason?: string
+  signal_count?: number
+  executed_signal_count?: number
+  blocked_signal_count?: number
+  grid_percent?: number
+  ma_filter_enabled?: boolean
+  ma_window?: number
+}
+
 type SnapshotPayload = {
   title: string
   strategy_id: string
@@ -123,6 +135,7 @@ type SnapshotPayload = {
   assumptions?: ReportAssumptions
   data_quality?: DataQuality
   technical_indicators?: TechnicalIndicators
+  signal_summary?: SignalSummary
   metrics: {
     cumulative_return?: number
     annualized_return?: number
@@ -150,6 +163,7 @@ type SnapshotPayload = {
     trade_table?: Array<Record<string, unknown>>
     risk_disclosure?: string
     technical_indicators?: TechnicalIndicators
+    signal_summary?: SignalSummary
   }
   generated_at: string
   publisher: string
@@ -327,6 +341,28 @@ function sideLabel(side: unknown): string {
     return '卖出'
   }
   return typeof side === 'string' ? side : '-'
+}
+
+function signalLabel(signal?: string): string {
+  if (!signal || signal === 'hold') {
+    return '观望'
+  }
+  return sideLabel(signal)
+}
+
+function decisionLabel(decision?: string): string {
+  switch (decision) {
+    case 'executed':
+      return '已执行'
+    case 'blocked_by_ma_filter':
+      return '被均线过滤'
+    case 'skipped_no_available_cash_or_position':
+      return '资金或仓位不足'
+    case 'hold':
+      return '未触发'
+    default:
+      return decision || '-'
+  }
 }
 
 function sideTone(side: unknown): 'buy' | 'sell' {
@@ -1161,7 +1197,15 @@ function DrawdownSummary({ payload }: { payload: SnapshotPayload }) {
   )
 }
 
-function TradeTable({ trades, summary }: { trades: Array<Record<string, unknown>>; summary?: TradeSummary }) {
+function TradeTable({
+  trades,
+  summary,
+  signal,
+}: {
+  trades: Array<Record<string, unknown>>
+  summary?: TradeSummary
+  signal?: SignalSummary
+}) {
   return (
     <section className="panel trade-panel wide">
       <header>
@@ -1180,6 +1224,32 @@ function TradeTable({ trades, summary }: { trades: Array<Record<string, unknown>
         <span>平均亏损 {formatPercent(summary?.average_loss)}</span>
         <span>盈亏比 {formatRatio(summary?.profit_loss_ratio)}</span>
       </div>
+      {signal ? (
+        <div className="signal-summary-row">
+          <div>
+            <span>最新信号</span>
+            <strong>{signalLabel(signal.latest_signal)}</strong>
+          </div>
+          <div>
+            <span>信号决策</span>
+            <strong>{decisionLabel(signal.latest_decision)}</strong>
+          </div>
+          <div>
+            <span>执行/拦截</span>
+            <strong>
+              {formatNumber(signal.executed_signal_count, 0)} / {formatNumber(signal.blocked_signal_count, 0)}
+            </strong>
+          </div>
+          <div>
+            <span>规则参数</span>
+            <strong>
+              网格 {formatNumber(signal.grid_percent, 2)}% · 均线
+              {signal.ma_filter_enabled ? `${formatNumber(signal.ma_window, 0)}日` : '关闭'}
+            </strong>
+          </div>
+          <p>{signal.latest_reason ?? '当前快照未记录信号说明。'}</p>
+        </div>
+      ) : null}
       <div className="table-wrap">
         <table>
           <thead>
@@ -1381,7 +1451,11 @@ function App() {
         <CandlePanel payload={payload} />
         <PositionPanel points={result.position_curve ?? []} />
         <DrawdownSummary payload={payload} />
-        <TradeTable trades={result.trade_table ?? []} summary={payload.trade_summary} />
+        <TradeTable
+          trades={result.trade_table ?? []}
+          summary={payload.trade_summary}
+          signal={payload.signal_summary ?? result.signal_summary}
+        />
         <AssumptionsPanel payload={payload} />
       </div>
       <RiskDisclosure payload={payload} />

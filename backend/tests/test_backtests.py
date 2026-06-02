@@ -185,6 +185,12 @@ def test_backtest_engine_applies_base_and_trade_position_percent() -> None:
     assert trades[1]["position_after"] > trades[0]["position_after"]
     assert result.metrics["cumulative_return"] == approx(0.0055, abs=0.0002)
     assert result.result_payload["orders"] == trades
+    assert result.result_payload["technical_indicators"]["ma"]["ma5"]
+    assert result.result_payload["technical_indicators"]["macd"]["hist"]
+    assert result.result_payload["indicator_summary"]["macd"]
+    assert result.result_payload["signal_events"][0]["decision"] == "executed"
+    assert result.result_payload["signal_summary"]["latest_signal"] == "buy"
+    assert trades[0]["reason_detail"]
 
 
 def test_backtest_engine_records_fee_and_slippage_costs() -> None:
@@ -209,6 +215,26 @@ def test_backtest_engine_records_fee_and_slippage_costs() -> None:
     assert trade["slippage"] > 0
     assert with_cost.result_payload["execution_assumptions"]["fees_included"] is True
     assert with_cost.result_payload["execution_assumptions"]["slippage_included"] is True
+
+
+def test_backtest_engine_records_ma_filtered_signal_explanations() -> None:
+    result = run_single_instrument_backtest(
+        bars=[
+            make_bar("2026-01-01T00:00:00", 100.0),
+            make_bar("2026-01-02T00:00:00", 200.0),
+            make_bar("2026-01-03T00:00:00", 80.0),
+            make_bar("2026-01-04T00:00:00", 90.0),
+        ],
+        parameter_set=make_parameter_set({"enable_ma_filter": True, "ma_window": 3}),
+        initial_cash=1000,
+    )
+
+    blocked_event = result.result_payload["signal_events"][-1]
+    assert blocked_event["side"] == "sell"
+    assert blocked_event["decision"] == "blocked_by_ma_filter"
+    assert blocked_event["ma_filter"]["passed"] is False
+    assert result.result_payload["signal_summary"]["blocked_signal_count"] == 1
+    assert result.result_payload["signal_summary"]["latest_decision"] == "blocked_by_ma_filter"
 
 
 def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
@@ -240,6 +266,8 @@ def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
         assert backtest["result_payload"]["trade_markers"]
         assert backtest["result_payload"]["orders"] == backtest["result_payload"]["trade_table"]
         assert backtest["result_payload"]["trade_table"][0]["quantity"] > 0
+        assert backtest["result_payload"]["technical_indicators"]["ma"]["ma5"]
+        assert backtest["result_payload"]["signal_summary"]["executed_signal_count"] == backtest["metrics"]["trade_count"]
         assert backtest["result_payload"]["execution_assumptions"]["base_position_percent"] == 50
         assert backtest["result_payload"]["data_quality"]["status"] == "warning"
         assert backtest["result_payload"]["data_quality"]["warnings"]
