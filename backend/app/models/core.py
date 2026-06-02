@@ -144,6 +144,8 @@ class PaperRun(SQLModel, table=True):
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     latest_equity: float = 0
     message: str = ""
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
 
 

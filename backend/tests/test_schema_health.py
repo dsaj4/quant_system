@@ -112,6 +112,21 @@ def test_schema_upgrade_adds_data_source_columns_and_adjust_identity() -> None:
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE paperrun (
+                    id INTEGER PRIMARY KEY,
+                    strategy_id VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL,
+                    config JSON,
+                    latest_equity FLOAT NOT NULL DEFAULT 0,
+                    message VARCHAR NOT NULL DEFAULT '',
+                    created_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
 
     upgrade_database_schema(engine)
 
@@ -119,12 +134,14 @@ def test_schema_upgrade_adds_data_source_columns_and_adjust_identity() -> None:
     bar_columns = {column["name"] for column in inspector.get_columns("bar")}
     task_columns = {column["name"] for column in inspector.get_columns("dataimporttask")}
     schedule_columns = {column["name"] for column in inspector.get_columns("marketdataschedule")}
+    paper_run_columns = {column["name"] for column in inspector.get_columns("paperrun")}
 
     assert "adjust" in bar_columns
     assert {"instrument_id", "frequency", "adjust", "rows_imported", "rows_updated", "request_params"}.issubset(
         task_columns
     )
     assert "provider" in schedule_columns
+    assert {"started_at", "finished_at"}.issubset(paper_run_columns)
 
     with engine.begin() as connection:
         connection.execute(

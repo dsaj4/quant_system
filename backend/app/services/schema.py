@@ -82,6 +82,10 @@ def _column_definitions_for(table_name: str) -> dict[str, str]:
         "marketdataschedule": {
             "provider": "VARCHAR NOT NULL DEFAULT 'tushare'",
         },
+        "paperrun": {
+            "started_at": "DATETIME",
+            "finished_at": "DATETIME",
+        },
     }.get(table_name, {})
 
 

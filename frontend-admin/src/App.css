@@ -195,6 +195,17 @@
   stroke-linejoin: round;
 }
 
+.paper-run-detail {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.paper-run-detail > div {
+  display: grid;
+  gap: 6px;
+}
+
 .pipeline {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

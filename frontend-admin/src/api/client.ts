@@ -237,18 +237,41 @@ export type PaperRun = {
   status: string
   config: {
     instrument_id?: number
+    instrument_symbol?: string
     frequency?: string
+    adjust?: string | null
     parameter_set_id?: number
     initial_cash?: number
     metrics?: {
       trade_count?: number
       latest_signal?: string
+      latest_decision?: string
       latest_position_percent?: number
+      signal_count?: number
+      simulated_trade_count?: number
+      blocked_signal_count?: number
     }
+    state_history?: Array<{ status: string; message?: string; at?: string }>
+    data_snapshot?: { bar_count?: number; first_timestamp?: string | null; last_timestamp?: string | null }
+    paper_summary?: {
+      latest_signal?: string
+      latest_decision?: string
+      latest_reason?: string
+      signal_count?: number
+      simulated_trade_count?: number
+      blocked_signal_count?: number
+      latest_trade?: Record<string, unknown> | null
+      latest_signal_event?: Record<string, unknown> | null
+    }
+    paper_signals?: Array<Record<string, unknown>>
+    paper_trades?: Array<Record<string, unknown>>
+    error?: { type?: string; message?: string }
     result_payload?: Record<string, unknown>
   }
   latest_equity: number
   message: string
+  started_at?: string | null
+  finished_at?: string | null
   created_at: string
 }
 

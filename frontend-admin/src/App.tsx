@@ -275,6 +275,22 @@ function tStatus(status: string | null | undefined): string {
   return status ? statusText[status] ?? status : '-'
 }
 
+function taskStatusColor(status: string | null | undefined): string {
+  if (status === 'succeeded') {
+    return 'green'
+  }
+  if (status === 'failed') {
+    return 'red'
+  }
+  if (status === 'running') {
+    return 'processing'
+  }
+  if (status === 'pending') {
+    return 'gold'
+  }
+  return 'default'
+}
+
 function tAction(action: string): string {
   return operationActionText[action] ?? action
 }
@@ -837,7 +853,13 @@ function App() {
         setPaperRuns(paperRunPayload)
         setOperationLogs(logPayload)
       })
-      .catch((error) => setPaperRunError(error instanceof Error ? error.message : '模拟运行失败'))
+      .catch((error) => {
+        setPaperRunError(error instanceof Error ? error.message : '模拟运行失败')
+        return Promise.all([fetchPaperRuns(token), fetchOperationLogs(token)]).then(([paperRunPayload, logPayload]) => {
+          setPaperRuns(paperRunPayload)
+          setOperationLogs(logPayload)
+        })
+      })
       .finally(() => setPaperRunStarting(false))
   }
 
@@ -1773,7 +1795,7 @@ function App() {
                       title: '状态',
                       dataIndex: 'status',
                       width: 110,
-                      render: (status: string) => <Tag color={status === 'succeeded' ? 'green' : 'red'}>{tStatus(status)}</Tag>,
+                      render: (status: string) => <Tag color={taskStatusColor(status)}>{tStatus(status)}</Tag>,
                     },
                     {
                       title: '最新权益',
@@ -1788,6 +1810,13 @@ function App() {
                       render: (config: PaperRun['config']) => tStatus(config.metrics?.latest_signal ?? 'hold'),
                     },
                     {
+                      title: '决策',
+                      dataIndex: 'config',
+                      width: 130,
+                      render: (config: PaperRun['config']) =>
+                        tStatus(config.metrics?.latest_decision ?? config.paper_summary?.latest_decision ?? 'hold'),
+                    },
+                    {
                       title: '仓位',
                       dataIndex: 'config',
                       width: 110,
@@ -1799,7 +1828,58 @@ function App() {
                       width: 90,
                       render: (config: PaperRun['config']) => config.metrics?.trade_count ?? 0,
                     },
+                    {
+                      title: '模拟成交',
+                      dataIndex: 'config',
+                      width: 110,
+                      render: (config: PaperRun['config']) =>
+                        config.paper_trades?.length ?? config.metrics?.simulated_trade_count ?? 0,
+                    },
+                    {
+                      title: '失败原因',
+                      width: 220,
+                      render: (_: unknown, record: PaperRun) =>
+                        record.status === 'failed' ? record.config.error?.message ?? record.message : '-',
+                    },
+                    {
+                      title: '结束时间',
+                      dataIndex: 'finished_at',
+                      width: 180,
+                      render: (value: string | null | undefined) => formatDateTime(value),
+                    },
                   ]}
+                  expandable={{
+                    expandedRowRender: (record: PaperRun) => (
+                      <div className="paper-run-detail">
+                        <div>
+                          <Text strong>状态流转</Text>
+                          <Space wrap size={6}>
+                            {(record.config.state_history ?? []).map((entry, index) => (
+                              <Tag color={taskStatusColor(entry.status)} key={`${entry.status}-${entry.at ?? index}`}>
+                                {tStatus(entry.status)} · {formatDateTime(entry.at)}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </div>
+                        <div>
+                          <Text strong>信号说明</Text>
+                          <Text type="secondary">
+                            {record.config.paper_summary?.latest_reason ??
+                              record.config.error?.message ??
+                              '当前模拟运行未记录信号说明。'}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text strong>监控数据</Text>
+                          <Text type="secondary">
+                            K线 {record.config.data_snapshot?.bar_count ?? 0} 根 · 信号{' '}
+                            {record.config.paper_signals?.length ?? record.config.metrics?.signal_count ?? 0} 个 · 模拟成交{' '}
+                            {record.config.paper_trades?.length ?? record.config.metrics?.simulated_trade_count ?? 0} 笔
+                          </Text>
+                        </div>
+                      </div>
+                    ),
+                  }}
                   dataSource={paperRuns.map((paperRun) => ({ ...paperRun, key: paperRun.id }))}
                 />
               </Card>

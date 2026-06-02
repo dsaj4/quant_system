@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from app.core.database import SessionDep
 from app.core.security import get_current_user
-from app.models import Bar, Instrument, PaperRun, StrategyParameterSet, TaskStatus, User
+from app.models import Bar, Instrument, PaperRun, StrategyParameterSet, TaskStatus, User, utc_now
 from app.services.operation_log import record_operation
 from app.services.paper import run_single_instrument_paper_simulation
 
@@ -28,6 +28,8 @@ class PaperRunResponse(BaseModel):
     config: dict
     latest_equity: float
     message: str
+    started_at: datetime | None
+    finished_at: datetime | None
     created_at: datetime
 
 
@@ -39,8 +41,30 @@ def paper_run_response(paper_run: PaperRun) -> PaperRunResponse:
         config=paper_run.config,
         latest_equity=paper_run.latest_equity,
         message=paper_run.message,
+        started_at=paper_run.started_at,
+        finished_at=paper_run.finished_at,
         created_at=paper_run.created_at,
     )
+
+
+def append_state(config: dict, status_value: TaskStatus, message: str) -> dict:
+    history = list(config.get("state_history") or [])
+    history.append(
+        {
+            "status": status_value.value,
+            "message": message,
+            "at": utc_now().isoformat(),
+        }
+    )
+    return {**config, "state_history": history}
+
+
+def bar_snapshot(bars: list[Bar]) -> dict:
+    return {
+        "bar_count": len(bars),
+        "first_timestamp": bars[0].timestamp.isoformat() if bars else None,
+        "last_timestamp": bars[-1].timestamp.isoformat() if bars else None,
+    }
 
 
 @router.get("", response_model=list[PaperRunResponse])
@@ -80,6 +104,39 @@ def create_paper_run(
     statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
     bars = session.exec(statement).all()
 
+    started_at = utc_now()
+    base_config = append_state(
+        {
+            "instrument_id": payload.instrument_id,
+            "instrument_symbol": instrument.symbol,
+            "frequency": frequency,
+            "adjust": adjust,
+            "parameter_set_id": parameter_set.id,
+            "initial_cash": payload.initial_cash,
+            "data_snapshot": bar_snapshot(bars),
+        },
+        TaskStatus.pending,
+        "Paper simulation accepted.",
+    )
+    paper_run = PaperRun(
+        strategy_id=parameter_set.strategy_id,
+        status=TaskStatus.pending,
+        config=base_config,
+        latest_equity=0,
+        message="Paper simulation accepted",
+        started_at=started_at,
+    )
+    session.add(paper_run)
+    session.commit()
+    session.refresh(paper_run)
+
+    paper_run.status = TaskStatus.running
+    paper_run.message = "Paper simulation running"
+    paper_run.config = append_state(paper_run.config, TaskStatus.running, "Loaded market data and started simulation.")
+    session.add(paper_run)
+    session.commit()
+    session.refresh(paper_run)
+
     try:
         result = run_single_instrument_paper_simulation(
             bars=bars,
@@ -87,31 +144,56 @@ def create_paper_run(
             initial_cash=payload.initial_cash,
         )
     except ValueError as exc:
+        paper_run.status = TaskStatus.failed
+        paper_run.message = str(exc)
+        paper_run.finished_at = utc_now()
+        paper_run.config = append_state(
+            {
+                **paper_run.config,
+                "error": {
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                },
+                "data_snapshot": bar_snapshot(bars),
+            },
+            TaskStatus.failed,
+            str(exc),
+        )
+        session.add(paper_run)
+        session.commit()
+        session.refresh(paper_run)
         record_operation(
             session,
             action="paper_run.create.failed",
             actor=current_user.username,
-            target_type="instrument",
-            target_id=str(payload.instrument_id),
-            detail={"message": str(exc), "frequency": frequency, "adjust": adjust},
+            target_type="paper_run",
+            target_id=str(paper_run.id),
+            detail={
+                "message": str(exc),
+                "instrument_id": payload.instrument_id,
+                "frequency": frequency,
+                "adjust": adjust,
+            },
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     latest_equity = float(result.metrics["latest_equity"])
-    paper_run = PaperRun(
-        strategy_id=parameter_set.strategy_id,
-        status=TaskStatus.succeeded,
-        config={
-            "instrument_id": payload.instrument_id,
-            "frequency": frequency,
-            "adjust": adjust,
-            "parameter_set_id": parameter_set.id,
-            "initial_cash": payload.initial_cash,
+    paper_run.status = TaskStatus.succeeded
+    paper_run.latest_equity = latest_equity
+    paper_run.message = "Paper simulation succeeded"
+    paper_run.finished_at = utc_now()
+    paper_run.config = append_state(
+        {
+            **paper_run.config,
             "metrics": result.metrics,
             "result_payload": result.result_payload,
+            "paper_summary": result.result_payload.get("paper_summary", {}),
+            "paper_signals": result.result_payload.get("paper_signals", []),
+            "paper_trades": result.result_payload.get("paper_trades", []),
+            "data_snapshot": bar_snapshot(bars),
         },
-        latest_equity=latest_equity,
-        message="Paper simulation succeeded",
+        TaskStatus.succeeded,
+        "Paper simulation succeeded.",
     )
     session.add(paper_run)
     session.commit()

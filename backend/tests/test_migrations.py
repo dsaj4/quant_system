@@ -29,8 +29,10 @@ def test_alembic_baseline_upgrades_empty_sqlite_database(tmp_path, monkeypatch) 
         assert "alembic_version" in tables
         assert "bar" in tables
         assert "backtestrun" in tables
+        paper_run_columns = {column["name"] for column in inspector.get_columns("paperrun")}
+        assert {"started_at", "finished_at"}.issubset(paper_run_columns)
         assert report.status == "ok"
         assert report.migration_status == "versioned"
-        assert report.migration_revision == "20260602_000001"
+        assert report.migration_revision == "20260602_000002"
     finally:
         get_settings.cache_clear()

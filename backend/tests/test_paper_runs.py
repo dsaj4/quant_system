@@ -75,8 +75,23 @@ def test_admin_can_create_paper_run_from_saved_parameter_set() -> None:
         assert paper_run["status"] == "succeeded"
         assert paper_run["strategy_id"] == "rolling_t_grid"
         assert paper_run["latest_equity"] == 103607.69
+        assert paper_run["started_at"]
+        assert paper_run["finished_at"]
         assert paper_run["config"]["metrics"]["latest_signal"] == "sell"
+        assert paper_run["config"]["metrics"]["latest_decision"] == "executed"
+        assert paper_run["config"]["metrics"]["simulated_trade_count"] == paper_run["config"]["metrics"]["trade_count"]
+        assert [item["status"] for item in paper_run["config"]["state_history"]] == [
+            "pending",
+            "running",
+            "succeeded",
+        ]
+        assert paper_run["config"]["data_snapshot"]["bar_count"] == 3
+        assert paper_run["config"]["paper_summary"]["latest_signal"] == "sell"
+        assert paper_run["config"]["paper_summary"]["latest_decision"] == "executed"
+        assert paper_run["config"]["paper_signals"]
+        assert paper_run["config"]["paper_trades"]
         assert paper_run["config"]["result_payload"]["paper_summary"]["latest_signal"] == "sell"
+        assert paper_run["config"]["result_payload"]["paper_trades"] == paper_run["config"]["paper_trades"]
 
         list_response = client.get(
             "/api/paper-runs",
@@ -111,3 +126,29 @@ def test_paper_run_fails_clearly_when_bars_are_missing() -> None:
 
         assert response.status_code == 400
         assert "No bars found" in response.json()["detail"]
+
+        list_response = client.get(
+            "/api/paper-runs",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert list_response.status_code == 200
+        failed_run = list_response.json()[0]
+        assert failed_run["status"] == "failed"
+        assert failed_run["latest_equity"] == 0
+        assert failed_run["started_at"]
+        assert failed_run["finished_at"]
+        assert "No bars found" in failed_run["message"]
+        assert failed_run["config"]["error"]["message"] == failed_run["message"]
+        assert failed_run["config"]["data_snapshot"]["bar_count"] == 0
+        assert [item["status"] for item in failed_run["config"]["state_history"]] == [
+            "pending",
+            "running",
+            "failed",
+        ]
+
+        logs_response = client.get(
+            "/api/operation-logs",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        actions = [item["action"] for item in logs_response.json()]
+        assert "paper_run.create.failed" in actions
