@@ -61,10 +61,10 @@
 
 相关已有文档：
 
-- `docs/external-audit-jzhu-trading.md`
+- `docs/customer-demo-talk-track.md`
 - `docs/project-status-demo-plan-2026-06-02.md`
-- `docs/quant-system-prd-and-architecture.md`
-- `docs/client-report-redesign-research.md`
+- `docs/demo-runbook.md`
+- `docs/frontend-agent-work-spec.md`
 
 ## 3. 无人值守执行边界
 
@@ -842,7 +842,7 @@ API 和数据影响：
 Files:
 
 - Read: `docs/project-status-demo-plan-2026-06-02.md`
-- Read: `docs/external-audit-jzhu-trading.md`
+- Read: `docs/customer-demo-talk-track.md`
 - Read: `backend/tests/`
 - Read: `frontend-display/src/App.tsx`
 - Read: `frontend-display/src/App.css`
