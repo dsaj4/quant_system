@@ -74,7 +74,7 @@ def test_admin_can_create_paper_run_from_saved_parameter_set() -> None:
         paper_run = response.json()
         assert paper_run["status"] == "succeeded"
         assert paper_run["strategy_id"] == "rolling_t_grid"
-        assert paper_run["latest_equity"] == 108000
+        assert paper_run["latest_equity"] == 103607.69
         assert paper_run["config"]["metrics"]["latest_signal"] == "sell"
         assert paper_run["config"]["result_payload"]["paper_summary"]["latest_signal"] == "sell"
 

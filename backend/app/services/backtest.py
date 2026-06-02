@@ -118,6 +118,39 @@ def calculate_performance_metrics(
     }
 
 
+def _percent_parameter(parameters: dict, name: str, default: float) -> float:
+    value = parameters.get(name, default)
+    if not isinstance(value, int | float):
+        return default
+    return max(0.0, min(float(value), 100.0)) / 100
+
+
+def _rate_parameter(parameters: dict, name: str, default: float = 0.0) -> float:
+    value = parameters.get(name, default)
+    if not isinstance(value, int | float):
+        return default
+    return max(0.0, float(value))
+
+
+def _moving_average(bars: list[Bar], index: int, window: int) -> float | None:
+    if window <= 1 or index + 1 < window:
+        return None
+    closes = [bar.close for bar in bars[index + 1 - window : index + 1]]
+    return sum(closes) / len(closes)
+
+
+def _ma_filter_allows_trade(*, side: str, bars: list[Bar], index: int, window: int) -> bool:
+    moving_average = _moving_average(bars, index, window)
+    if moving_average is None:
+        return True
+    close = bars[index].close
+    if side == "sell":
+        return close >= moving_average
+    if side == "buy":
+        return close <= moving_average
+    return True
+
+
 def run_single_instrument_backtest(
     *,
     bars: list[Bar],
@@ -131,26 +164,110 @@ def run_single_instrument_backtest(
     if first_close <= 0:
         raise ValueError("First close price must be positive")
 
-    peak_equity = initial_cash
+    parameters = parameter_set.parameters
+    grid_percent = float(parameters.get("grid_percent", 1.5))
+    base_position_percent = _percent_parameter(parameters, "base_position_percent", 50)
+    trade_position_percent = _percent_parameter(parameters, "trade_position_percent", 10)
+    fee_rate = _rate_parameter(parameters, "fee_rate")
+    slippage_bps = _rate_parameter(parameters, "slippage_bps")
+    slippage_rate = slippage_bps / 10000
+    enable_ma_filter = bool(parameters.get("enable_ma_filter", False))
+    ma_window = int(parameters.get("ma_window", 20) or 20)
+
+    cash = float(initial_cash)
+    position_qty = 0.0
+    initial_budget = cash * base_position_percent
+    if initial_budget > 0:
+        execution_price = first_close * (1 + slippage_rate)
+        quantity = initial_budget / (execution_price * (1 + fee_rate)) if execution_price > 0 else 0
+        gross_amount = quantity * execution_price
+        fee = gross_amount * fee_rate
+        cash -= gross_amount + fee
+        position_qty += quantity
+
+    peak_equity = cash + position_qty * first_close
     equity_curve = []
+    benchmark_curve = []
     drawdown_curve = []
     position_curve = []
     candles = []
     trade_markers = []
     trades = []
 
-    grid_percent = float(parameter_set.parameters.get("grid_percent", 1.5))
     reference_close = first_close
 
     for index, bar in enumerate(bars):
-        equity = round(initial_cash * (bar.close / first_close), 2)
-        peak_equity = max(peak_equity, equity)
-        drawdown = round((equity - peak_equity) / peak_equity, 6) if peak_equity else 0
+        if bar.close <= 0:
+            raise ValueError("Close price must be positive")
 
         timestamp = bar.timestamp.isoformat()
+
+        if index > 0:
+            change_percent = ((bar.close - reference_close) / reference_close) * 100
+            side = "sell" if change_percent > 0 else "buy"
+            should_trade = abs(change_percent) >= grid_percent
+            if should_trade and enable_ma_filter:
+                should_trade = _ma_filter_allows_trade(side=side, bars=bars, index=index, window=ma_window)
+
+            if should_trade:
+                pre_trade_equity = cash + position_qty * bar.close
+                target_notional = pre_trade_equity * trade_position_percent
+                execution_price = bar.close * (1 - slippage_rate if side == "sell" else 1 + slippage_rate)
+                quantity = 0.0
+                gross_amount = 0.0
+                fee = 0.0
+                slippage = 0.0
+
+                if side == "sell" and execution_price > 0 and position_qty > 0:
+                    quantity = min(position_qty, target_notional / execution_price)
+                    gross_amount = quantity * execution_price
+                    fee = gross_amount * fee_rate
+                    slippage = quantity * max(bar.close - execution_price, 0)
+                    cash += gross_amount - fee
+                    position_qty -= quantity
+                elif side == "buy" and execution_price > 0 and cash > 0:
+                    cash_budget = min(target_notional, cash)
+                    quantity = cash_budget / (execution_price * (1 + fee_rate))
+                    gross_amount = quantity * execution_price
+                    fee = gross_amount * fee_rate
+                    slippage = quantity * max(execution_price - bar.close, 0)
+                    cash -= gross_amount + fee
+                    position_qty += quantity
+
+                if quantity > 0:
+                    equity_after = cash + position_qty * bar.close
+                    position_after = (position_qty * bar.close / equity_after * 100) if equity_after > 0 else 0
+                    marker = {"timestamp": timestamp, "side": side, "price": bar.close}
+                    trade = {
+                        "timestamp": timestamp,
+                        "side": side,
+                        "price": bar.close,
+                        "execution_price": round(execution_price, 6),
+                        "quantity": round(quantity, 6),
+                        "amount": round(gross_amount, 6),
+                        "fee": round(fee, 6),
+                        "slippage": round(slippage, 6),
+                        "cash_after": round(cash, 6),
+                        "equity_after": round(equity_after, 6),
+                        "position_after": round(position_after, 6),
+                        "change_percent": round(change_percent, 4),
+                        "reason": "grid_threshold",
+                    }
+                    trade_markers.append(marker)
+                    trades.append(trade)
+                    reference_close = bar.close
+
+        equity = round(cash + position_qty * bar.close, 2)
+        benchmark_value = round(initial_cash * (bar.close / first_close), 2)
+        peak_equity = max(peak_equity, equity)
+        drawdown = round((equity - peak_equity) / peak_equity, 6) if peak_equity else 0
+        position_value = position_qty * bar.close
+        position_percent = round(position_value / equity * 100, 6) if equity > 0 else 0
+
         equity_curve.append({"timestamp": timestamp, "value": equity})
+        benchmark_curve.append({"timestamp": timestamp, "value": benchmark_value})
         drawdown_curve.append({"timestamp": timestamp, "value": drawdown})
-        position_curve.append({"timestamp": timestamp, "value": parameter_set.parameters.get("base_position_percent", 50)})
+        position_curve.append({"timestamp": timestamp, "value": position_percent})
         candles.append(
             {
                 "timestamp": timestamp,
@@ -162,29 +279,12 @@ def run_single_instrument_backtest(
             }
         )
 
-        if index == 0:
-            continue
-
-        change_percent = ((bar.close - reference_close) / reference_close) * 100
-        if abs(change_percent) >= grid_percent:
-            side = "sell" if change_percent > 0 else "buy"
-            marker = {"timestamp": timestamp, "side": side, "price": bar.close}
-            trade_markers.append(marker)
-            trades.append(
-                {
-                    "timestamp": timestamp,
-                    "side": side,
-                    "price": bar.close,
-                    "change_percent": round(change_percent, 4),
-                }
-            )
-            reference_close = bar.close
-
-    cumulative_return = round((bars[-1].close / first_close) - 1, 6)
+    final_equity = equity_curve[-1]["value"] if equity_curve else initial_cash
+    cumulative_return = round((final_equity / initial_cash) - 1, 6) if initial_cash else 0
     max_drawdown = min((point["value"] for point in drawdown_curve), default=0)
     win_rate = 0
     if trades:
-        wins = [trade for trade in trades if trade["side"] == "sell"]
+        wins = [trade for trade in trades if trade["change_percent"] > 0]
         win_rate = round(len(wins) / len(trades), 6)
 
     performance_metrics = calculate_performance_metrics(
@@ -203,14 +303,24 @@ def run_single_instrument_backtest(
     }
     result_payload = {
         "strategy_id": parameter_set.strategy_id,
-        "parameters": parameter_set.parameters,
+        "parameters": parameters,
         "equity_curve": equity_curve,
-        "benchmark_curve": equity_curve,
+        "benchmark_curve": benchmark_curve,
         "drawdown_curve": drawdown_curve,
         "candles": candles,
         "trade_markers": trade_markers,
         "position_curve": position_curve,
         "trade_table": trades,
+        "orders": trades,
+        "execution_assumptions": {
+            "initial_cash": initial_cash,
+            "base_position_percent": round(base_position_percent * 100, 6),
+            "trade_position_percent": round(trade_position_percent * 100, 6),
+            "fee_rate": fee_rate,
+            "slippage_bps": slippage_bps,
+            "fees_included": fee_rate > 0,
+            "slippage_included": slippage_bps > 0,
+        },
         "risk_disclosure": "Backtest results are simulated and do not represent real-money trading.",
     }
     return BacktestResult(metrics=metrics, result_payload=result_payload)

@@ -157,12 +157,16 @@ def build_report_metadata(backtest: BacktestRun, title: str, publisher: User) ->
 
 def build_report_assumptions(backtest: BacktestRun) -> dict:
     config = backtest.config or {}
+    result_payload = backtest.result_payload or {}
+    execution_assumptions = result_payload.get("execution_assumptions") or {}
     return {
         "data_source": config.get("data_source", "stored_bars"),
-        "execution_model": "V1简化规则回测，按已存储K线生成信号与权益曲线。",
-        "fees_included": False,
-        "slippage_included": False,
-        "benchmark_method": "V1基准曲线暂沿用策略权益曲线结构，后续可接入指数或组合基准。",
+        "execution_model": "V2资金仓位回测，按已存储K线、目标仓位、手续费和滑点假设生成模拟成交。",
+        "fees_included": bool(execution_assumptions.get("fees_included")),
+        "slippage_included": bool(execution_assumptions.get("slippage_included")),
+        "fee_rate": execution_assumptions.get("fee_rate", 0),
+        "slippage_bps": execution_assumptions.get("slippage_bps", 0),
+        "benchmark_method": "基准曲线按首根K线买入持有估算，用于对照策略权益变化。",
         "frequency": config.get("frequency", "5m"),
         "live_trading": False,
     }

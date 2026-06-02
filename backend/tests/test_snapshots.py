@@ -118,7 +118,7 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
         assert public_response.status_code == 200
         public_snapshot = public_response.json()
         assert public_snapshot["title"] == "Published rolling T report"
-        assert public_snapshot["payload"]["metrics"]["cumulative_return"] == 0.07
+        assert public_snapshot["payload"]["metrics"]["cumulative_return"] == 0.035
 
         logs_response = client.get(
             "/api/operation-logs",

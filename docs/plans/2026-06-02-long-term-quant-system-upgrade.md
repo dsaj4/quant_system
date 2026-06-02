@@ -814,7 +814,7 @@ API 和数据影响：
 | --- | --- | --- | --- |
 | Phase 0 基线冻结与演示保护 | verified | demo runbook、smoke 校验、现有报告保护 | 后端测试、展示端构建、报告浏览器 smoke |
 | Phase 1 客户报告成熟化 | verified | 更完整的报告 payload、指标区、交易披露、风险说明 | 后端指标测试、展示端构建、桌面/移动报告验证 |
-| Phase 2 回测引擎真实化 | pending | 资金、仓位、费用、滑点、equity/drawdown/position curves | 手工数据回测测试、完整后端测试 |
+| Phase 2 回测引擎真实化 | verified | 资金、仓位、费用、滑点、equity/drawdown/position curves | 手工数据回测测试、完整后端测试 |
 | Phase 3 管理端数据工作流 | pending | provider/adjust/frequency 表单、导入结果、状态展示 | 管理端构建、API 测试、端到端操作 smoke |
 | Phase 4 数据质量与交易日历 | pending | 交易日历、缺失数据 warning、质量摘要 | 数据质量测试、报告 warning 验证 |
 | Phase 5 指标层和策略解释 | pending | 指标服务、策略信号解释、snapshot 指标字段 | 指标样例测试、报告展示验证 |
