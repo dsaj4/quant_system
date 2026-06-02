@@ -243,6 +243,7 @@ def test_admin_can_fetch_public_bars_with_provider(monkeypatch) -> None:
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "instrument_id": instrument_id,
+                "provider": "akshare",
                 "frequency": "5m",
                 "start_date": "2026-01-02 09:30:00",
                 "end_date": "2026-01-02 15:00:00",
@@ -306,7 +307,7 @@ def test_public_fetch_failure_is_recorded(monkeypatch) -> None:
             headers={"Authorization": f"Bearer {token}"},
         )
         latest_task = tasks_response.json()[0]
-        assert latest_task["source"] == "akshare"
+        assert latest_task["source"] == "tushare"
         assert latest_task["frequency"] == "5m"
         assert latest_task["status"] == "failed"
         assert "no bars" in latest_task["message"]

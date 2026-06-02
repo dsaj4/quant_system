@@ -80,10 +80,14 @@ export type PortfolioInput = {
 export type DataImportTask = {
   id: number
   source: string
+  instrument_id: number | null
+  frequency: string
+  adjust: string
   status: string
   message: string
   rows_imported: number
   rows_updated: number
+  request_params: Record<string, unknown>
   created_at: string
   started_at: string | null
   finished_at: string | null
@@ -94,6 +98,7 @@ export type Bar = {
   instrument_id: number
   frequency: string
   timestamp: string
+  adjust: string
   open: number
   high: number
   low: number
@@ -128,6 +133,7 @@ export type CsvImportInput = {
 
 export type PublicFetchInput = {
   instrument_id: number
+  provider: string
   frequency: string
   start_date: string
   end_date: string
@@ -137,6 +143,7 @@ export type PublicFetchInput = {
 export type MarketDataSchedule = {
   id: number
   instrument_id: number
+  provider: string
   frequency: string
   start_date: string
   end_date: string
@@ -151,6 +158,7 @@ export type MarketDataSchedule = {
 
 export type MarketDataScheduleInput = {
   instrument_id: number
+  provider: string
   frequency: string
   start_date: string
   end_date: string
@@ -382,12 +390,16 @@ export async function fetchMarketBars(
   token: string,
   instrumentId: number,
   frequency = '5m',
+  adjust?: string,
 ): Promise<Bar[]> {
   const params = new URLSearchParams({
     instrument_id: String(instrumentId),
     frequency,
     limit: '20',
   })
+  if (adjust !== undefined) {
+    params.set('adjust', adjust)
+  }
   return requestJson<Bar[]>(`/market-data/bars?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -399,11 +411,15 @@ export async function fetchMarketDataCompleteness(
   token: string,
   instrumentId: number,
   frequency = '5m',
+  adjust?: string,
 ): Promise<DataCompleteness> {
   const params = new URLSearchParams({
     instrument_id: String(instrumentId),
     frequency,
   })
+  if (adjust !== undefined) {
+    params.set('adjust', adjust)
+  }
   return requestJson<DataCompleteness>(`/market-data/completeness?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,

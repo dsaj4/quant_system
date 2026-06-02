@@ -104,7 +104,7 @@ class DataImportTask(SQLModel, table=True):
 class MarketDataSchedule(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     instrument_id: int = Field(foreign_key="instrument.id", index=True)
-    provider: str = Field(default="akshare", index=True)
+    provider: str = Field(default="tushare", index=True)
     frequency: str = Field(default="5m", index=True)
     start_date: str
     end_date: str

@@ -24,7 +24,7 @@ class CsvImportRequest(BaseModel):
 
 class PublicFetchRequest(BaseModel):
     instrument_id: int
-    provider: str = "akshare"
+    provider: str = "tushare"
     frequency: str = Field(default="5m", min_length=1)
     start_date: str = Field(min_length=1)
     end_date: str = Field(min_length=1)
@@ -209,7 +209,7 @@ def fetch_public_market_data(
 
     frequency = payload.frequency.strip().lower()
     adjust = payload.adjust.strip()
-    provider = payload.provider.strip().lower() or "akshare"
+    provider = payload.provider.strip().lower() or "tushare"
     task = DataImportTask(
         source=provider,
         instrument_id=payload.instrument_id,

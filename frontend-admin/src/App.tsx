@@ -129,6 +129,37 @@ function formatRatio(value: number | null | undefined): string {
   return value === null || value === undefined ? '-' : `${(value * 100).toFixed(2)}%`
 }
 
+function formatRequestParams(value: Record<string, unknown> | undefined): string {
+  if (!value || !Object.keys(value).length) {
+    return '-'
+  }
+  return Object.entries(value)
+    .map(([key, entry]) => `${key}: ${String(entry || '-')}`)
+    .join(' / ')
+}
+
+const providerOptions = [
+  { label: 'Tushare Pro', value: 'tushare' },
+  { label: 'JQData', value: 'jqdata', disabled: true },
+  { label: 'AkShare', value: 'akshare' },
+  { label: 'BaoStock', value: 'baostock', disabled: true },
+]
+
+const frequencyOptions = [
+  { label: '日线 1d', value: '1d' },
+  { label: '1分钟', value: '1m' },
+  { label: '5分钟', value: '5m' },
+  { label: '15分钟', value: '15m' },
+  { label: '30分钟', value: '30m' },
+  { label: '60分钟', value: '60m' },
+]
+
+const adjustOptions = [
+  { label: '不复权', value: '' },
+  { label: '前复权 qfq', value: 'qfq' },
+  { label: '后复权 hfq', value: 'hfq' },
+]
+
 const statusText: Record<string, string> = {
   Checking: '检查中',
   Connected: '已连接',
@@ -618,14 +649,17 @@ function App() {
     fetchPublicMarketData(token, {
       ...values,
       instrument_id: Number(values.instrument_id),
-      frequency: values.frequency || '5m',
-      adjust: values.adjust || '',
+      provider: values.provider || 'tushare',
+      frequency: values.frequency || '1d',
+      adjust: values.adjust ?? 'qfq',
     })
       .then(() => {
         const instrumentId = Number(values.instrument_id)
+        const frequency = values.frequency || '1d'
+        const adjust = values.adjust ?? 'qfq'
         return Promise.all([
-          fetchMarketBars(token, instrumentId, values.frequency || '5m'),
-          fetchMarketDataCompleteness(token, instrumentId, values.frequency || '5m'),
+          fetchMarketBars(token, instrumentId, frequency, adjust),
+          fetchMarketDataCompleteness(token, instrumentId, frequency, adjust),
           fetchDataImportTasks(token),
           fetchOperationLogs(token),
         ])
@@ -651,8 +685,9 @@ function App() {
       ...values,
       instrument_id: Number(values.instrument_id),
       interval_minutes: Number(values.interval_minutes || 60),
-      frequency: values.frequency || '5m',
-      adjust: values.adjust || '',
+      provider: values.provider || 'tushare',
+      frequency: values.frequency || '1d',
+      adjust: values.adjust ?? 'qfq',
     })
       .then(() => Promise.all([fetchMarketDataSchedules(token), fetchOperationLogs(token)]))
       .then(([schedulePayload, logPayload]) => {
@@ -1145,10 +1180,11 @@ function App() {
                   layout="vertical"
                   initialValues={{
                     instrument_id: instruments[0]?.id,
-                    frequency: '5m',
-                    start_date: '2026-01-02 09:30:00',
-                    end_date: '2026-01-02 15:00:00',
-                    adjust: '',
+                    provider: 'tushare',
+                    frequency: '1d',
+                    start_date: '2024-01-01',
+                    end_date: '2026-05-29',
+                    adjust: 'qfq',
                   }}
                   onFinish={handleFetchPublicMarketData}
                   className="public-fetch-form"
@@ -1157,22 +1193,22 @@ function App() {
                     <Form.Item name="instrument_id" label="标的ID" rules={[{ required: true }]}>
                       <Input placeholder="标的ID" />
                     </Form.Item>
-                    <Form.Item name="frequency" label="周期" rules={[{ required: true }]}>
-                      <Input placeholder="5m" />
+                    <Form.Item name="provider" label="数据源" rules={[{ required: true }]}>
+                      <Select options={providerOptions} />
                     </Form.Item>
-                    <Form.Item name="adjust" label="复权">
-                      <Input placeholder="none / qfq / hfq" />
+                    <Form.Item name="frequency" label="周期" rules={[{ required: true }]}>
+                      <Select options={frequencyOptions} />
                     </Form.Item>
                   </div>
                   <div className="market-data-grid">
                     <Form.Item name="start_date" label="开始时间" rules={[{ required: true }]}>
-                      <Input placeholder="2026-01-02 09:30:00" />
+                      <Input placeholder="2024-01-01" />
                     </Form.Item>
                     <Form.Item name="end_date" label="结束时间" rules={[{ required: true }]}>
-                      <Input placeholder="2026-01-02 15:00:00" />
+                      <Input placeholder="2026-05-29" />
                     </Form.Item>
-                    <Form.Item label="来源">
-                      <Input value="akshare" disabled />
+                    <Form.Item name="adjust" label="复权">
+                      <Select options={adjustOptions} />
                     </Form.Item>
                   </div>
                   <Button type="primary" htmlType="submit" loading={publicDataFetching} disabled={!instruments.length}>
@@ -1235,7 +1271,10 @@ function App() {
                   size="small"
                   pagination={{ pageSize: 5 }}
                   columns={[
+                    { title: '标的', dataIndex: 'instrument_id', width: 90 },
                     { title: '来源', dataIndex: 'source', width: 90 },
+                    { title: '周期', dataIndex: 'frequency', width: 90 },
+                    { title: '复权', dataIndex: 'adjust', width: 90, render: (adjust: string) => adjust || '不复权' },
                     {
                       title: '状态',
                       dataIndex: 'status',
@@ -1244,6 +1283,12 @@ function App() {
                     },
                     { title: '新增行', dataIndex: 'rows_imported', width: 100 },
                     { title: '更新行', dataIndex: 'rows_updated', width: 100 },
+                    {
+                      title: '请求参数',
+                      dataIndex: 'request_params',
+                      width: 240,
+                      render: (params: DataImportTask['request_params']) => formatRequestParams(params),
+                    },
                     { title: '消息', dataIndex: 'message', render: (message: string) => tDataMessage(message) },
                   ]}
                   dataSource={dataImportTasks.map((task) => ({ ...task, key: task.id }))}
@@ -1256,10 +1301,11 @@ function App() {
                   layout="vertical"
                   initialValues={{
                     instrument_id: instruments[0]?.id,
-                    frequency: '5m',
-                    start_date: '2026-01-02 09:30:00',
-                    end_date: '2026-01-02 15:00:00',
-                    adjust: '',
+                    provider: 'tushare',
+                    frequency: '1d',
+                    start_date: '2024-01-01',
+                    end_date: '2026-05-29',
+                    adjust: 'qfq',
                     interval_minutes: 60,
                   }}
                   onFinish={handleCreateMarketDataSchedule}
@@ -1268,22 +1314,27 @@ function App() {
                     <Form.Item name="instrument_id" label="标的ID" rules={[{ required: true }]}>
                       <Input placeholder="标的ID" />
                     </Form.Item>
-                    <Form.Item name="frequency" label="周期" rules={[{ required: true }]}>
-                      <Input placeholder="5m" />
+                    <Form.Item name="provider" label="数据源" rules={[{ required: true }]}>
+                      <Select options={providerOptions} />
                     </Form.Item>
-                    <Form.Item name="interval_minutes" label="间隔分钟" rules={[{ required: true }]}>
-                      <InputNumber min={1} max={1440} />
+                    <Form.Item name="frequency" label="周期" rules={[{ required: true }]}>
+                      <Select options={frequencyOptions} />
                     </Form.Item>
                   </div>
                   <div className="market-data-grid">
+                    <Form.Item name="interval_minutes" label="间隔分钟" rules={[{ required: true }]}>
+                      <InputNumber min={1} max={1440} />
+                    </Form.Item>
                     <Form.Item name="start_date" label="开始时间" rules={[{ required: true }]}>
-                      <Input placeholder="2026-01-02 09:30:00" />
+                      <Input placeholder="2024-01-01" />
                     </Form.Item>
                     <Form.Item name="end_date" label="结束时间" rules={[{ required: true }]}>
-                      <Input placeholder="2026-01-02 15:00:00" />
+                      <Input placeholder="2026-05-29" />
                     </Form.Item>
+                  </div>
+                  <div className="market-data-grid">
                     <Form.Item name="adjust" label="复权">
-                      <Input placeholder="none / qfq / hfq" />
+                      <Select options={adjustOptions} />
                     </Form.Item>
                   </div>
                   <Button type="primary" htmlType="submit" loading={scheduleSaving} disabled={!instruments.length}>
@@ -1296,7 +1347,9 @@ function App() {
                   columns={[
                     { title: 'ID', dataIndex: 'id', width: 70 },
                     { title: '标的', dataIndex: 'instrument_id', width: 100 },
+                    { title: '数据源', dataIndex: 'provider', width: 100 },
                     { title: '周期', dataIndex: 'frequency', width: 100 },
+                    { title: '复权', dataIndex: 'adjust', width: 90, render: (adjust: string) => adjust || '不复权' },
                     { title: '间隔', dataIndex: 'interval_minutes', width: 100, render: (value: number) => `${value} 分钟` },
                     {
                       title: '状态',

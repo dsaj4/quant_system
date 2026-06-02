@@ -15,7 +15,7 @@ router = APIRouter(prefix="/market-data-schedules", tags=["market-data-schedules
 
 class MarketDataScheduleCreate(BaseModel):
     instrument_id: int
-    provider: str = "akshare"
+    provider: str = "tushare"
     frequency: str = Field(default="5m", min_length=1)
     start_date: str = Field(min_length=1)
     end_date: str = Field(min_length=1)
@@ -84,7 +84,7 @@ def create_market_data_schedule(
 
     schedule = MarketDataSchedule(
         instrument_id=payload.instrument_id,
-        provider=payload.provider.strip().lower() or "akshare",
+        provider=payload.provider.strip().lower() or "tushare",
         frequency=payload.frequency.strip().lower(),
         start_date=payload.start_date.strip(),
         end_date=payload.end_date.strip(),

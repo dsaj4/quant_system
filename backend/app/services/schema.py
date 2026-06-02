@@ -52,7 +52,7 @@ def _column_definitions_for(table_name: str) -> dict[str, str]:
             "request_params": "JSON NOT NULL DEFAULT '{}'",
         },
         "marketdataschedule": {
-            "provider": "VARCHAR NOT NULL DEFAULT 'akshare'",
+            "provider": "VARCHAR NOT NULL DEFAULT 'tushare'",
         },
     }.get(table_name, {})
 
