@@ -22,6 +22,7 @@ def test_health_reports_database_schema_status() -> None:
         assert payload["public_data"]["providers"] == ["tushare", "jqdata", "akshare", "baostock"]
         assert "akshare" in payload["public_data"]["adapter_providers"]
         assert "tushare" in payload["public_data"]["adapter_providers"]
+        assert "tushare" in payload["public_data"]["calendar_providers"]
         assert payload["public_data"]["default_provider"] == "tushare"
         assert payload["public_data"]["primary_provider"]["name"] == "tushare"
         assert isinstance(payload["public_data"]["primary_provider"]["is_configured"], bool)

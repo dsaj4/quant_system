@@ -1239,9 +1239,19 @@ function App() {
                     <Text>缺失：{dataCompleteness?.missing_bar_count ?? '-'}</Text>
                     <Text>缺口：{dataCompleteness?.gap_count ?? '-'}</Text>
                     <Text>最大缺口：{dataCompleteness?.largest_gap_minutes ?? '-'} 分钟</Text>
+                    <Text>交易日：{dataCompleteness?.expected_trading_days ?? '-'}</Text>
+                    <Text>缺失交易日：{dataCompleteness?.missing_trading_days?.slice(0, 3).join(', ') || '-'}</Text>
                     <Text>最早：{formatDateTime(dataCompleteness?.first_timestamp)}</Text>
                     <Text>最新：{formatDateTime(dataCompleteness?.last_timestamp)}</Text>
                   </Space>
+                  {dataCompleteness?.warnings?.length ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      className="form-alert"
+                      title={dataCompleteness.warnings.join('；')}
+                    />
+                  ) : null}
                   <Button onClick={handleCheckDataCompleteness} loading={dataCompletenessChecking} disabled={!instruments.length}>
                     检查完整性
                   </Button>

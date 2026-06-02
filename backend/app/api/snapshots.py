@@ -136,6 +136,8 @@ def build_report_metadata(backtest: BacktestRun, title: str, publisher: User) ->
         warnings.append("样本K线数量较少，展示结果仅适合作为流程演示或初步观察。")
     if missing_sections:
         warnings.append("部分展示数据缺失：" + "、".join(missing_sections))
+    data_quality = result_payload.get("data_quality") or {}
+    warnings.extend(data_quality.get("warnings") or [])
 
     return {
         "title": title,
@@ -173,6 +175,18 @@ def build_report_assumptions(backtest: BacktestRun) -> dict:
 
 
 def build_data_quality_summary(backtest: BacktestRun) -> dict:
+    result_payload = backtest.result_payload or {}
+    payload_quality = result_payload.get("data_quality")
+    if isinstance(payload_quality, dict) and payload_quality:
+        bar_count = int(payload_quality.get("bar_count") or (backtest.metrics or {}).get("bar_count") or 0)
+        warnings = payload_quality.get("warnings") or []
+        return {
+            **payload_quality,
+            "bar_count": bar_count,
+            "sample_warning": bool(payload_quality.get("sample_warning")) or bar_count < 30,
+            "warnings": warnings,
+        }
+
     bar_count = int((backtest.metrics or {}).get("bar_count") or 0)
     if bar_count == 0:
         status = "empty"
@@ -186,6 +200,7 @@ def build_data_quality_summary(backtest: BacktestRun) -> dict:
         "bar_count": bar_count,
         "sample_warning": bar_count < 30,
         "message": "样本K线数量较少。" if bar_count < 30 else "样本数量满足基础展示要求。",
+        "warnings": ["样本K线数量较少。"] if bar_count < 30 else [],
     }
 
 

@@ -7,6 +7,7 @@ from sqlmodel import select
 from app.core.database import SessionDep
 from app.core.security import get_current_user
 from app.models import BacktestRun, Bar, Instrument, Portfolio, PortfolioInstrument, StrategyParameterSet, TaskStatus, User
+from app.services.data_quality import assess_bar_completeness
 from app.services.backtest import PortfolioLeg, run_portfolio_backtest, run_single_instrument_backtest
 from app.services.operation_log import record_operation
 
@@ -32,6 +33,28 @@ class BacktestRunResponse(BaseModel):
     result_payload: dict
     message: str
     created_at: datetime
+
+
+def data_quality_payload(completeness) -> dict:
+    return {
+        "instrument_id": completeness.instrument_id,
+        "frequency": completeness.frequency,
+        "bar_count": completeness.bar_count,
+        "first_timestamp": completeness.first_timestamp.isoformat() if completeness.first_timestamp else None,
+        "last_timestamp": completeness.last_timestamp.isoformat() if completeness.last_timestamp else None,
+        "expected_interval_minutes": completeness.expected_interval_minutes,
+        "expected_bar_count": completeness.expected_bar_count,
+        "missing_bar_count": completeness.missing_bar_count,
+        "completeness_ratio": completeness.completeness_ratio,
+        "gap_count": completeness.gap_count,
+        "largest_gap_minutes": completeness.largest_gap_minutes,
+        "status": completeness.status,
+        "message": completeness.message,
+        "calendar_source": completeness.calendar_source,
+        "expected_trading_days": completeness.expected_trading_days,
+        "missing_trading_days": completeness.missing_trading_days or [],
+        "warnings": completeness.warnings or [],
+    }
 
 
 def backtest_response(backtest: BacktestRun) -> BacktestRunResponse:
@@ -99,6 +122,13 @@ def create_backtest(
                 parameter_set=parameter_set,
                 initial_cash=payload.initial_cash,
             )
+            result.result_payload["data_quality"] = data_quality_payload(
+                assess_bar_completeness(
+                    instrument_id=payload.instrument_id,
+                    frequency=frequency,
+                    bars=bars,
+                )
+            )
             scope_config = {
                 "scope": "instrument",
                 "instrument_id": payload.instrument_id,
@@ -139,6 +169,12 @@ def create_backtest(
                 parameter_set=parameter_set,
                 initial_cash=payload.initial_cash,
             )
+            result.result_payload["data_quality"] = {
+                "status": "ok",
+                "message": "Portfolio backtest uses overlapping bars across all positions.",
+                "warnings": [],
+                "bar_count": result.metrics.get("bar_count", 0),
+            }
             scope_config = {
                 "scope": "portfolio",
                 "portfolio_id": payload.portfolio_id,

@@ -5,7 +5,7 @@ from app.core.database import engine
 from app.core.database import SessionDep
 from app.models import DataSourceProvider, Instrument
 from app.scheduler.market_data import scheduler
-from app.services.market_data import list_public_bar_providers
+from app.services.market_data import list_public_bar_providers, list_trading_calendar_providers
 from app.services.schema import check_database_schema
 
 router = APIRouter(tags=["health"])
@@ -17,6 +17,7 @@ def health_check(session: SessionDep) -> dict[str, object]:
     schema_report = check_database_schema(engine)
     scheduler_status = "running" if scheduler.running else "stopped"
     adapter_providers = list_public_bar_providers()
+    calendar_providers = list_trading_calendar_providers()
     configured_providers = session.exec(select(DataSourceProvider).order_by(DataSourceProvider.priority)).all()
     enabled_provider_names = [provider.name for provider in configured_providers if provider.is_enabled]
     primary_provider_config = next((provider for provider in configured_providers if provider.role == "primary"), None)
@@ -47,6 +48,7 @@ def health_check(session: SessionDep) -> dict[str, object]:
             "providers": [provider.name for provider in configured_providers],
             "enabled_providers": enabled_provider_names,
             "adapter_providers": adapter_providers,
+            "calendar_providers": calendar_providers,
             "default_provider": primary_provider,
             "primary_provider": {
                 "name": primary_provider,

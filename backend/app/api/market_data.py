@@ -8,7 +8,7 @@ from app.core.database import SessionDep
 from app.core.security import get_current_user
 from app.models import Bar, DataImportTask, Instrument, TaskStatus, User, utc_now
 from app.services.data_quality import DataCompleteness, assess_bar_completeness
-from app.services.market_data import fetch_public_bars, import_csv_bars
+from app.services.market_data import fetch_public_bars, fetch_trading_calendar, import_csv_bars
 from app.services.operation_log import record_operation
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -76,6 +76,10 @@ class DataCompletenessResponse(BaseModel):
     largest_gap_minutes: float | None
     status: str
     message: str
+    calendar_source: str | None
+    expected_trading_days: int | None
+    missing_trading_days: list[str]
+    warnings: list[str]
 
 
 def task_response(task: DataImportTask) -> DataImportTaskResponse:
@@ -314,6 +318,10 @@ def completeness_response(completeness: DataCompleteness) -> DataCompletenessRes
         largest_gap_minutes=completeness.largest_gap_minutes,
         status=completeness.status,
         message=completeness.message,
+        calendar_source=completeness.calendar_source,
+        expected_trading_days=completeness.expected_trading_days,
+        missing_trading_days=completeness.missing_trading_days or [],
+        warnings=completeness.warnings or [],
     )
 
 
@@ -323,6 +331,7 @@ def check_data_completeness(
     instrument_id: int = Query(gt=0),
     frequency: str = Query(min_length=1),
     adjust: str | None = Query(default=None),
+    calendar_provider: str | None = Query(default=None),
     current_user: User = Depends(get_current_user),
 ) -> DataCompletenessResponse:
     instrument = session.get(Instrument, instrument_id)
@@ -337,11 +346,28 @@ def check_data_completeness(
     if adjust is not None:
         conditions.append(Bar.adjust == adjust.strip())
     statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
+    bars = session.exec(statement).all()
+    expected_trading_dates = None
+    calendar_source = None
+    if calendar_provider and bars:
+        provider_name = calendar_provider.strip().lower()
+        try:
+            expected_trading_dates = fetch_trading_calendar(
+                provider_name=provider_name,
+                exchange=instrument.exchange,
+                start_date=bars[0].timestamp.date().isoformat(),
+                end_date=bars[-1].timestamp.date().isoformat(),
+            )
+            calendar_source = provider_name
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return completeness_response(
         assess_bar_completeness(
             instrument_id=instrument_id,
             frequency=normalized_frequency,
-            bars=session.exec(statement).all(),
+            bars=bars,
+            expected_trading_dates=expected_trading_dates,
+            calendar_source=calendar_source,
         )
     )
 

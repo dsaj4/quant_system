@@ -112,6 +112,47 @@ def test_admin_can_check_market_data_completeness() -> None:
         assert completeness["completeness_ratio"] == 0.666667
 
 
+def test_admin_can_check_daily_completeness_with_calendar_provider(monkeypatch) -> None:
+    with TestClient(app) as client:
+        token = login_token(client)
+        instrument_id = create_instrument(client, token, "TCSV13")
+
+        import_response = client.post(
+            "/api/market-data/import-csv",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "instrument_id": instrument_id,
+                "frequency": "1d",
+                "source": "csv",
+                "csv_text": (
+                    "timestamp,open,high,low,close,volume\n"
+                    "2026-01-02,10,10.5,9.8,10.2,1000\n"
+                    "2026-01-06,10.2,10.8,10.1,10.7,1200\n"
+                ),
+            },
+        )
+        assert import_response.status_code == 200
+
+        def fake_fetch_trading_calendar(**kwargs):
+            assert kwargs["provider_name"] == "tushare"
+            return ["2026-01-02", "2026-01-05", "2026-01-06"]
+
+        monkeypatch.setattr("app.api.market_data.fetch_trading_calendar", fake_fetch_trading_calendar)
+
+        response = client.get(
+            f"/api/market-data/completeness?instrument_id={instrument_id}&frequency=1d&calendar_provider=tushare",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        completeness = response.json()
+        assert completeness["status"] == "warning"
+        assert completeness["calendar_source"] == "tushare"
+        assert completeness["expected_trading_days"] == 3
+        assert completeness["missing_trading_days"] == ["2026-01-05"]
+        assert completeness["warnings"]
+
+
 def test_completeness_reports_empty_data_clearly() -> None:
     with TestClient(app) as client:
         token = login_token(client)

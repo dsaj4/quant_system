@@ -59,6 +59,10 @@ type DataQuality = {
   bar_count?: number
   sample_warning?: boolean
   message?: string
+  calendar_source?: string | null
+  expected_trading_days?: number | null
+  missing_trading_days?: string[]
+  warnings?: string[]
 }
 
 type ReportSummary = {
@@ -1288,6 +1292,7 @@ function AssumptionsPanel({ payload }: { payload: SnapshotPayload }) {
 function RiskDisclosure({ payload }: { payload: SnapshotPayload }) {
   const quality = payload.data_quality
   const metadataWarnings = payload.report_metadata?.warnings ?? []
+  const qualityWarnings = quality?.warnings ?? []
   const missingSections = payload.report_metadata?.missing_sections ?? []
   const disclosure = normalizeRiskDisclosure(payload.risk_disclosure ?? payload.result_payload.risk_disclosure)
   const risks = [
@@ -1311,6 +1316,12 @@ function RiskDisclosure({ payload }: { payload: SnapshotPayload }) {
         {metadataWarnings.map((warning) => (
           <article className="warning-note" key={warning}>{warning}</article>
         ))}
+        {qualityWarnings.map((warning) => (
+          <article className="warning-note" key={warning}>{warning}</article>
+        ))}
+        {quality?.missing_trading_days?.length ? (
+          <article className="warning-note">缺失交易日：{quality.missing_trading_days.slice(0, 8).join('、')}</article>
+        ) : null}
         {missingSections.map((section) => (
           <article className="warning-note" key={section}>快照缺少：{section}</article>
         ))}

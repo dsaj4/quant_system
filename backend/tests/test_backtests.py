@@ -241,6 +241,8 @@ def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
         assert backtest["result_payload"]["orders"] == backtest["result_payload"]["trade_table"]
         assert backtest["result_payload"]["trade_table"][0]["quantity"] > 0
         assert backtest["result_payload"]["execution_assumptions"]["base_position_percent"] == 50
+        assert backtest["result_payload"]["data_quality"]["status"] == "warning"
+        assert backtest["result_payload"]["data_quality"]["warnings"]
 
         logs_response = client.get(
             "/api/operation-logs",

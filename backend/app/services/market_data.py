@@ -30,9 +30,11 @@ class ImportResult:
 
 
 PublicBarProvider = Callable[..., Any]
+TradingCalendarProvider = Callable[..., Any]
 
 
 PUBLIC_BAR_PROVIDERS: dict[str, PublicBarProvider] = {}
+TRADING_CALENDAR_PROVIDERS: dict[str, TradingCalendarProvider] = {}
 
 
 def register_public_bar_provider(name: str, provider: PublicBarProvider) -> None:
@@ -52,6 +54,25 @@ def get_public_bar_provider(name: str) -> PublicBarProvider:
 
 def list_public_bar_providers() -> list[str]:
     return sorted(PUBLIC_BAR_PROVIDERS)
+
+
+def register_trading_calendar_provider(name: str, provider: TradingCalendarProvider) -> None:
+    normalized_name = name.strip().lower()
+    if not normalized_name:
+        raise ValueError("Provider name is required")
+    TRADING_CALENDAR_PROVIDERS[normalized_name] = provider
+
+
+def get_trading_calendar_provider(name: str) -> TradingCalendarProvider:
+    normalized_name = name.strip().lower()
+    try:
+        return TRADING_CALENDAR_PROVIDERS[normalized_name]
+    except KeyError as exc:
+        raise ValueError(f"Unknown trading calendar provider: {name}") from exc
+
+
+def list_trading_calendar_providers() -> list[str]:
+    return sorted(TRADING_CALENDAR_PROVIDERS)
 
 
 def parse_csv_bars(csv_text: str) -> list[ParsedBar]:
@@ -342,6 +363,72 @@ def default_tushare_provider(
     )
 
 
+def default_tushare_trading_calendar_provider(
+    *,
+    exchange: str = "",
+    start_date: str,
+    end_date: str,
+) -> Any:
+    settings = get_settings()
+    if not settings.tushare_token:
+        raise RuntimeError("Tushare token is not configured; set QUANT_TUSHARE_TOKEN")
+    try:
+        import tushare as ts  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError("tushare is not installed; install tushare or choose another provider") from exc
+
+    ts.set_token(settings.tushare_token)
+    pro = ts.pro_api()
+    market = exchange.strip().upper()
+    if market in {"SSE", "XSHG"}:
+        market = "SH"
+    if market in {"SZSE", "XSHE"}:
+        market = "SZ"
+    return pro.trade_cal(
+        exchange=market if market in {"SH", "SZ", "SSE", "SZSE"} else "",
+        start_date=tushare_date(start_date, frequency="1d"),
+        end_date=tushare_date(end_date, frequency="1d"),
+        is_open="1",
+    )
+
+
+def normalize_trading_calendar_rows(rows: list[dict[str, Any]]) -> list[str]:
+    trading_dates = []
+    for row in rows:
+        is_open = row.get("is_open")
+        if is_open not in {None, 1, "1", True}:
+            continue
+        raw_date = row.get("cal_date") or row.get("trade_date") or row.get("date")
+        if raw_date is None:
+            continue
+        text = str(raw_date).strip()
+        if len(text) == 8 and text.isdigit():
+            trading_dates.append(datetime.strptime(text, "%Y%m%d").date().isoformat())
+        else:
+            trading_dates.append(datetime.fromisoformat(text).date().isoformat())
+    return sorted(set(trading_dates))
+
+
+def fetch_trading_calendar(
+    *,
+    provider_name: str,
+    exchange: str,
+    start_date: str,
+    end_date: str,
+    provider: TradingCalendarProvider | None = None,
+) -> list[str]:
+    normalized_provider_name = provider_name.strip().lower() or "tushare"
+    selected_provider = provider or get_trading_calendar_provider(normalized_provider_name)
+    rows = rows_from_provider_result(
+        selected_provider(
+            exchange=exchange,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    )
+    return normalize_trading_calendar_rows(rows)
+
+
 def normalize_provider_row(provider_name: str, row: dict[str, Any], line_number: int) -> ParsedBar:
     if provider_name == "tushare":
         return normalize_tushare_row(row, line_number)
@@ -391,3 +478,4 @@ def fetch_public_bars(
 
 register_public_bar_provider("akshare", default_akshare_provider)
 register_public_bar_provider("tushare", default_tushare_provider)
+register_trading_calendar_provider("tushare", default_tushare_trading_calendar_provider)

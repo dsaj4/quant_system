@@ -122,6 +122,10 @@ export type DataCompleteness = {
   largest_gap_minutes: number | null
   status: string
   message: string
+  calendar_source: string | null
+  expected_trading_days: number | null
+  missing_trading_days: string[]
+  warnings: string[]
 }
 
 export type CsvImportInput = {
@@ -412,6 +416,7 @@ export async function fetchMarketDataCompleteness(
   instrumentId: number,
   frequency = '5m',
   adjust?: string,
+  calendarProvider?: string,
 ): Promise<DataCompleteness> {
   const params = new URLSearchParams({
     instrument_id: String(instrumentId),
@@ -419,6 +424,9 @@ export async function fetchMarketDataCompleteness(
   })
   if (adjust !== undefined) {
     params.set('adjust', adjust)
+  }
+  if (calendarProvider) {
+    params.set('calendar_provider', calendarProvider)
   }
   return requestJson<DataCompleteness>(`/market-data/completeness?${params.toString()}`, {
     headers: {

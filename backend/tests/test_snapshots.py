@@ -113,6 +113,7 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
         assert assumptions["fees_included"] is False
         assert assumptions["slippage_included"] is False
         assert published["snapshot"]["immutable_payload"]["data_quality"]["status"] == "warning"
+        assert published["snapshot"]["immutable_payload"]["data_quality"]["warnings"]
 
         public_response = client.get(f"/api/public/snapshots/{published['share_token']}")
         assert public_response.status_code == 200
