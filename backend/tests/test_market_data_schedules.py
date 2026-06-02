@@ -42,6 +42,7 @@ def test_admin_can_create_run_and_disable_market_data_schedule(monkeypatch) -> N
         schedule = create_response.json()
         schedule_id = schedule["id"]
         assert schedule["is_active"] is True
+        assert schedule["provider"] == "akshare"
         assert schedule["interval_minutes"] == 30
         assert scheduler.get_job(job_id(schedule_id))
 

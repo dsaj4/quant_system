@@ -17,6 +17,7 @@ class BacktestCreate(BaseModel):
     instrument_id: int | None = None
     portfolio_id: int | None = None
     frequency: str = "5m"
+    adjust: str | None = None
     parameter_set_id: int
     initial_cash: float = Field(default=100000, gt=0)
 
@@ -77,6 +78,7 @@ def create_backtest(
         )
 
     frequency = payload.frequency.strip().lower()
+    adjust = payload.adjust.strip() if payload.adjust is not None else None
     scope_config: dict
     target_type: str
     target_id: str
@@ -87,11 +89,10 @@ def create_backtest(
             if not instrument:
                 raise ValueError(f"Unknown instrument id: {payload.instrument_id}")
 
-            statement = (
-                select(Bar)
-                .where(Bar.instrument_id == payload.instrument_id, Bar.frequency == frequency)
-                .order_by(Bar.timestamp)
-            )
+            conditions = [Bar.instrument_id == payload.instrument_id, Bar.frequency == frequency]
+            if adjust is not None:
+                conditions.append(Bar.adjust == adjust)
+            statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
             bars = session.exec(statement).all()
             result = run_single_instrument_backtest(
                 bars=bars,
@@ -120,11 +121,10 @@ def create_backtest(
                 if not instrument:
                     raise ValueError(f"Unknown instrument id: {position.instrument_id}")
 
-                bars_statement = (
-                    select(Bar)
-                    .where(Bar.instrument_id == position.instrument_id, Bar.frequency == frequency)
-                    .order_by(Bar.timestamp)
-                )
+                conditions = [Bar.instrument_id == position.instrument_id, Bar.frequency == frequency]
+                if adjust is not None:
+                    conditions.append(Bar.adjust == adjust)
+                bars_statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
                 legs.append(
                     PortfolioLeg(
                         instrument_id=position.instrument_id,
@@ -157,7 +157,7 @@ def create_backtest(
             actor=current_user.username,
             target_type=target_type if "target_type" in locals() else "backtest_scope",
             target_id=target_id if "target_id" in locals() else "",
-            detail={"message": str(exc), "frequency": frequency},
+            detail={"message": str(exc), "frequency": frequency, "adjust": adjust},
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -168,6 +168,7 @@ def create_backtest(
         config={
             **scope_config,
             "frequency": frequency,
+            "adjust": adjust,
             "initial_cash": payload.initial_cash,
         },
         metrics=result.metrics,
@@ -184,6 +185,6 @@ def create_backtest(
         actor=current_user.username,
         target_type="backtest_run",
         target_id=str(backtest.id),
-        detail={**scope_config, "frequency": frequency},
+        detail={**scope_config, "frequency": frequency, "adjust": adjust},
     )
     return backtest_response(backtest)

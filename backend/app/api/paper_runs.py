@@ -16,6 +16,7 @@ router = APIRouter(prefix="/paper-runs", tags=["paper runs"])
 class PaperRunCreate(BaseModel):
     instrument_id: int
     frequency: str = "5m"
+    adjust: str | None = None
     parameter_set_id: int
     initial_cash: float = Field(default=100000, gt=0)
 
@@ -72,11 +73,11 @@ def create_paper_run(
         )
 
     frequency = payload.frequency.strip().lower()
-    statement = (
-        select(Bar)
-        .where(Bar.instrument_id == payload.instrument_id, Bar.frequency == frequency)
-        .order_by(Bar.timestamp)
-    )
+    adjust = payload.adjust.strip() if payload.adjust is not None else None
+    conditions = [Bar.instrument_id == payload.instrument_id, Bar.frequency == frequency]
+    if adjust is not None:
+        conditions.append(Bar.adjust == adjust)
+    statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
     bars = session.exec(statement).all()
 
     try:
@@ -92,7 +93,7 @@ def create_paper_run(
             actor=current_user.username,
             target_type="instrument",
             target_id=str(payload.instrument_id),
-            detail={"message": str(exc), "frequency": frequency},
+            detail={"message": str(exc), "frequency": frequency, "adjust": adjust},
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -103,6 +104,7 @@ def create_paper_run(
         config={
             "instrument_id": payload.instrument_id,
             "frequency": frequency,
+            "adjust": adjust,
             "parameter_set_id": parameter_set.id,
             "initial_cash": payload.initial_cash,
             "metrics": result.metrics,
@@ -121,6 +123,6 @@ def create_paper_run(
         actor=current_user.username,
         target_type="paper_run",
         target_id=str(paper_run.id),
-        detail={"instrument_id": payload.instrument_id, "frequency": frequency},
+        detail={"instrument_id": payload.instrument_id, "frequency": frequency, "adjust": adjust},
     )
     return paper_run_response(paper_run)

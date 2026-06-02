@@ -47,7 +47,13 @@ def test_admin_can_import_and_query_csv_bars() -> None:
         assert import_response.status_code == 200
         task = import_response.json()
         assert task["status"] == "succeeded"
+        assert task["source"] == "csv"
+        assert task["instrument_id"] == instrument_id
+        assert task["frequency"] == "5m"
+        assert task["adjust"] == ""
         assert task["rows_imported"] == 2
+        assert task["rows_updated"] == 0
+        assert task["request_params"]["source"] == "csv"
 
         bars_response = client.get(
             f"/api/market-data/bars?instrument_id={instrument_id}&frequency=5m&limit=10",
@@ -58,6 +64,7 @@ def test_admin_can_import_and_query_csv_bars() -> None:
         bars = bars_response.json()
         assert len(bars) == 2
         assert bars[0]["timestamp"].startswith("2026-01-02T09:35:00")
+        assert bars[0]["adjust"] == ""
         assert bars[1]["close"] == 10.7
 
         logs_response = client.get(
@@ -157,6 +164,7 @@ def test_reimport_updates_existing_bar_without_duplicates() -> None:
         )
         bars = bars_response.json()
         assert len(bars) == 1
+        assert bars[0]["adjust"] == ""
         assert bars[0]["close"] == 11.5
         assert bars[0]["volume"] == 1500
 
@@ -200,10 +208,12 @@ def test_admin_can_fetch_public_bars_with_provider(monkeypatch) -> None:
             from app.services.market_data import ParsedBar, upsert_bars
             from datetime import datetime
 
+            assert kwargs["provider_name"] == "akshare"
             return upsert_bars(
                 session,
                 instrument_id=kwargs["instrument_id"],
                 frequency=kwargs["frequency"],
+                adjust=kwargs["adjust"],
                 source="akshare",
                 data_version="akshare:test",
                 parsed_bars=[
@@ -242,8 +252,12 @@ def test_admin_can_fetch_public_bars_with_provider(monkeypatch) -> None:
         assert fetch_response.status_code == 200
         task = fetch_response.json()
         assert task["source"] == "akshare"
+        assert task["instrument_id"] == instrument_id
+        assert task["frequency"] == "5m"
+        assert task["adjust"] == ""
         assert task["status"] == "succeeded"
         assert task["rows_imported"] == 2
+        assert task["request_params"]["provider"] == "akshare"
 
         bars_response = client.get(
             f"/api/market-data/bars?instrument_id={instrument_id}&frequency=5m&limit=10",
@@ -252,6 +266,7 @@ def test_admin_can_fetch_public_bars_with_provider(monkeypatch) -> None:
         bars = bars_response.json()
         assert len(bars) == 2
         assert bars[0]["source"] == "akshare"
+        assert bars[0]["adjust"] == ""
         assert bars[0]["data_version"] == "akshare:test"
 
         logs_response = client.get(
@@ -292,5 +307,6 @@ def test_public_fetch_failure_is_recorded(monkeypatch) -> None:
         )
         latest_task = tasks_response.json()[0]
         assert latest_task["source"] == "akshare"
+        assert latest_task["frequency"] == "5m"
         assert latest_task["status"] == "failed"
         assert "no bars" in latest_task["message"]

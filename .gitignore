@@ -14,6 +14,10 @@ htmlcov/
 node_modules/
 dist/
 
+# Local secrets
+.env
+backend/.env
+
 # Local runtime data
 data/
 *.db

@@ -17,12 +17,14 @@ router = APIRouter(prefix="/market-data", tags=["market-data"])
 class CsvImportRequest(BaseModel):
     instrument_id: int
     frequency: str = Field(default="5m", min_length=1)
+    adjust: str = ""
     source: str = "csv"
     csv_text: str = Field(min_length=1)
 
 
 class PublicFetchRequest(BaseModel):
     instrument_id: int
+    provider: str = "akshare"
     frequency: str = Field(default="5m", min_length=1)
     start_date: str = Field(min_length=1)
     end_date: str = Field(min_length=1)
@@ -32,10 +34,14 @@ class PublicFetchRequest(BaseModel):
 class DataImportTaskResponse(BaseModel):
     id: int
     source: str
+    instrument_id: int | None
+    frequency: str
+    adjust: str
     status: TaskStatus
     message: str
     rows_imported: int
     rows_updated: int
+    request_params: dict
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -46,6 +52,7 @@ class BarResponse(BaseModel):
     instrument_id: int
     frequency: str
     timestamp: datetime
+    adjust: str
     open: float
     high: float
     low: float
@@ -72,20 +79,17 @@ class DataCompletenessResponse(BaseModel):
 
 
 def task_response(task: DataImportTask) -> DataImportTaskResponse:
-    detail = {}
-    if task.message.startswith("{"):
-        # Keep the table model stable for now; row counts live in the response/log detail.
-        import json
-
-        detail = json.loads(task.message)
-
     return DataImportTaskResponse(
         id=task.id or 0,
         source=task.source,
+        instrument_id=task.instrument_id,
+        frequency=task.frequency,
+        adjust=task.adjust,
         status=task.status,
-        message=detail.get("message", task.message),
-        rows_imported=int(detail.get("rows_imported", 0)),
-        rows_updated=int(detail.get("rows_updated", 0)),
+        message=task.message,
+        rows_imported=task.rows_imported,
+        rows_updated=task.rows_updated,
+        request_params=task.request_params,
         created_at=task.created_at,
         started_at=task.started_at,
         finished_at=task.finished_at,
@@ -98,6 +102,7 @@ def bar_response(bar: Bar) -> BarResponse:
         instrument_id=bar.instrument_id,
         frequency=bar.frequency,
         timestamp=bar.timestamp,
+        adjust=bar.adjust,
         open=bar.open,
         high=bar.high,
         low=bar.low,
@@ -121,8 +126,6 @@ def import_csv_market_data(
             detail=f"Unknown instrument id: {payload.instrument_id}",
         )
 
-    import json
-
     task = DataImportTask(
         source=payload.source.strip().lower() or "csv",
         status=TaskStatus.running,
@@ -133,6 +136,7 @@ def import_csv_market_data(
     session.refresh(task)
 
     frequency = payload.frequency.strip().lower()
+    adjust = payload.adjust.strip()
     try:
         result = import_csv_bars(
             session,
@@ -140,11 +144,16 @@ def import_csv_market_data(
             frequency=frequency,
             source=task.source,
             csv_text=payload.csv_text,
+            adjust=adjust,
         )
     except ValueError as exc:
         task.status = TaskStatus.failed
         task.finished_at = utc_now()
-        task.message = json.dumps({"message": str(exc), "rows_imported": 0, "rows_updated": 0})
+        task.message = str(exc)
+        task.instrument_id = payload.instrument_id
+        task.frequency = frequency
+        task.adjust = adjust
+        task.request_params = {"source": task.source, "adjust": adjust}
         session.add(task)
         session.commit()
         record_operation(
@@ -159,13 +168,13 @@ def import_csv_market_data(
 
     task.status = TaskStatus.succeeded
     task.finished_at = utc_now()
-    task.message = json.dumps(
-        {
-            "message": "CSV import succeeded",
-            "rows_imported": result.rows_imported,
-            "rows_updated": result.rows_updated,
-        }
-    )
+    task.message = "CSV import succeeded"
+    task.instrument_id = payload.instrument_id
+    task.frequency = frequency
+    task.adjust = adjust
+    task.rows_imported = result.rows_imported
+    task.rows_updated = result.rows_updated
+    task.request_params = {"source": task.source, "adjust": adjust}
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -198,11 +207,20 @@ def fetch_public_market_data(
             detail=f"Unknown instrument id: {payload.instrument_id}",
         )
 
-    import json
-
     frequency = payload.frequency.strip().lower()
+    adjust = payload.adjust.strip()
+    provider = payload.provider.strip().lower() or "akshare"
     task = DataImportTask(
-        source="akshare",
+        source=provider,
+        instrument_id=payload.instrument_id,
+        frequency=frequency,
+        adjust=adjust,
+        request_params={
+            "provider": provider,
+            "start_date": payload.start_date.strip(),
+            "end_date": payload.end_date.strip(),
+            "adjust": adjust,
+        },
         status=TaskStatus.running,
         started_at=utc_now(),
     )
@@ -214,16 +232,18 @@ def fetch_public_market_data(
         result = fetch_public_bars(
             session,
             instrument_symbol=instrument.symbol,
+            instrument_exchange=instrument.exchange,
             instrument_id=payload.instrument_id,
             frequency=frequency,
             start_date=payload.start_date.strip(),
             end_date=payload.end_date.strip(),
-            adjust=payload.adjust.strip(),
+            adjust=adjust,
+            provider_name=provider,
         )
     except (RuntimeError, ValueError) as exc:
         task.status = TaskStatus.failed
         task.finished_at = utc_now()
-        task.message = json.dumps({"message": str(exc), "rows_imported": 0, "rows_updated": 0})
+        task.message = str(exc)
         session.add(task)
         session.commit()
         record_operation(
@@ -232,19 +252,15 @@ def fetch_public_market_data(
             actor=current_user.username,
             target_type="instrument",
             target_id=str(payload.instrument_id),
-            detail={"frequency": frequency, "message": str(exc), "source": "akshare"},
+            detail={"frequency": frequency, "message": str(exc), "source": provider, "adjust": adjust},
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     task.status = TaskStatus.succeeded
     task.finished_at = utc_now()
-    task.message = json.dumps(
-        {
-            "message": "Public data fetch succeeded",
-            "rows_imported": result.rows_imported,
-            "rows_updated": result.rows_updated,
-        }
-    )
+    task.message = "Public data fetch succeeded"
+    task.rows_imported = result.rows_imported
+    task.rows_updated = result.rows_updated
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -259,7 +275,8 @@ def fetch_public_market_data(
             "frequency": frequency,
             "rows_imported": result.rows_imported,
             "rows_updated": result.rows_updated,
-            "source": "akshare",
+            "source": provider,
+            "adjust": adjust,
         },
     )
     return task_response(task)
@@ -270,15 +287,14 @@ def list_bars(
     session: SessionDep,
     instrument_id: int = Query(gt=0),
     frequency: str = Query(min_length=1),
+    adjust: str | None = Query(default=None),
     limit: int = Query(default=200, gt=0, le=1000),
     current_user: User = Depends(get_current_user),
 ) -> list[BarResponse]:
-    statement = (
-        select(Bar)
-        .where(Bar.instrument_id == instrument_id, Bar.frequency == frequency.strip().lower())
-        .order_by(Bar.timestamp.desc())
-        .limit(limit)
-    )
+    conditions = [Bar.instrument_id == instrument_id, Bar.frequency == frequency.strip().lower()]
+    if adjust is not None:
+        conditions.append(Bar.adjust == adjust.strip())
+    statement = select(Bar).where(*conditions).order_by(Bar.timestamp.desc()).limit(limit)
     bars = list(reversed(session.exec(statement).all()))
     return [bar_response(bar) for bar in bars]
 
@@ -306,6 +322,7 @@ def check_data_completeness(
     session: SessionDep,
     instrument_id: int = Query(gt=0),
     frequency: str = Query(min_length=1),
+    adjust: str | None = Query(default=None),
     current_user: User = Depends(get_current_user),
 ) -> DataCompletenessResponse:
     instrument = session.get(Instrument, instrument_id)
@@ -316,11 +333,10 @@ def check_data_completeness(
         )
 
     normalized_frequency = frequency.strip().lower()
-    statement = (
-        select(Bar)
-        .where(Bar.instrument_id == instrument_id, Bar.frequency == normalized_frequency)
-        .order_by(Bar.timestamp)
-    )
+    conditions = [Bar.instrument_id == instrument_id, Bar.frequency == normalized_frequency]
+    if adjust is not None:
+        conditions.append(Bar.adjust == adjust.strip())
+    statement = select(Bar).where(*conditions).order_by(Bar.timestamp)
     return completeness_response(
         assess_bar_completeness(
             instrument_id=instrument_id,

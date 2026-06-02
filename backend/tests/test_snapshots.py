@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
+from app.api.snapshots import hash_share_token
+from app.core.database import engine
 from app.main import app
+from app.models import BacktestRun, PublishedSnapshot, ShareLink, SnapshotStatus, TaskStatus, utc_now
 
 
 def login_token(client: TestClient) -> str:
@@ -78,6 +82,18 @@ def test_admin_can_publish_snapshot_and_client_can_read_with_token() -> None:
         assert published["share_token"]
         assert published["snapshot"]["immutable_payload"]["title"] == "Published rolling T report"
         assert published["snapshot"]["immutable_payload"]["metrics"]["bar_count"] == 2
+        payload = published["snapshot"]["immutable_payload"]
+        assert {
+            "title",
+            "strategy_id",
+            "backtest_config",
+            "report_metadata",
+            "assumptions",
+            "data_quality",
+            "metrics",
+            "result_payload",
+            "risk_disclosure",
+        }.issubset(payload)
         metadata = published["snapshot"]["immutable_payload"]["report_metadata"]
         assert metadata["scope_label"] == "单支股票"
         assert metadata["target_label"] == "TSNAP01"
@@ -178,6 +194,51 @@ def test_admin_can_manage_snapshot_share_links_without_persisting_plain_token() 
         actions = [item["action"] for item in logs_response.json()]
         assert "share_link.create" in actions
         assert "share_link.revoke" in actions
+
+
+def test_public_snapshot_can_read_legacy_minimal_payload() -> None:
+    with TestClient(app) as client:
+        share_token = "legacy-smoke-token"
+        with Session(engine) as session:
+            backtest = BacktestRun(
+                strategy_id="legacy_strategy",
+                status=TaskStatus.succeeded,
+                config={},
+                metrics={},
+                result_payload={},
+                message="Legacy backtest row for public snapshot compatibility.",
+            )
+            session.add(backtest)
+            session.commit()
+            session.refresh(backtest)
+
+            snapshot = PublishedSnapshot(
+                backtest_run_id=backtest.id or 0,
+                version=1,
+                status=SnapshotStatus.published,
+                title="Legacy payload",
+                immutable_payload={"title": "Legacy payload", "metrics": {"bar_count": 0}},
+                published_at=utc_now(),
+            )
+            session.add(snapshot)
+            session.commit()
+            session.refresh(snapshot)
+
+            session.add(
+                ShareLink(
+                    snapshot_id=snapshot.id or 0,
+                    token_hash=hash_share_token(share_token),
+                    is_active=True,
+                )
+            )
+            session.commit()
+
+        public_response = client.get(f"/api/public/snapshots/{share_token}")
+
+        assert public_response.status_code == 200
+        payload = public_response.json()
+        assert payload["title"] == "Legacy payload"
+        assert payload["payload"]["metrics"]["bar_count"] == 0
 
 
 def test_cannot_publish_failed_or_missing_backtest() -> None:

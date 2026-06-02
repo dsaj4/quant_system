@@ -15,6 +15,7 @@ router = APIRouter(prefix="/market-data-schedules", tags=["market-data-schedules
 
 class MarketDataScheduleCreate(BaseModel):
     instrument_id: int
+    provider: str = "akshare"
     frequency: str = Field(default="5m", min_length=1)
     start_date: str = Field(min_length=1)
     end_date: str = Field(min_length=1)
@@ -25,6 +26,7 @@ class MarketDataScheduleCreate(BaseModel):
 class MarketDataScheduleResponse(BaseModel):
     id: int
     instrument_id: int
+    provider: str
     frequency: str
     start_date: str
     end_date: str
@@ -47,6 +49,7 @@ def schedule_response(schedule: MarketDataSchedule) -> MarketDataScheduleRespons
     return MarketDataScheduleResponse(
         id=schedule.id or 0,
         instrument_id=schedule.instrument_id,
+        provider=schedule.provider,
         frequency=schedule.frequency,
         start_date=schedule.start_date,
         end_date=schedule.end_date,
@@ -81,6 +84,7 @@ def create_market_data_schedule(
 
     schedule = MarketDataSchedule(
         instrument_id=payload.instrument_id,
+        provider=payload.provider.strip().lower() or "akshare",
         frequency=payload.frequency.strip().lower(),
         start_date=payload.start_date.strip(),
         end_date=payload.end_date.strip(),
@@ -97,7 +101,11 @@ def create_market_data_schedule(
         actor=current_user.username,
         target_type="market_data_schedule",
         target_id=str(schedule.id),
-        detail={"instrument_id": schedule.instrument_id, "interval_minutes": schedule.interval_minutes},
+        detail={
+            "instrument_id": schedule.instrument_id,
+            "provider": schedule.provider,
+            "interval_minutes": schedule.interval_minutes,
+        },
     )
     return schedule_response(schedule)
 

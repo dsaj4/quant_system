@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -40,6 +40,20 @@ class Instrument(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class DataSourceProvider(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    display_name: str
+    role: str = Field(default="fallback", index=True)
+    priority: int = Field(default=100, index=True)
+    is_enabled: bool = Field(default=True, index=True)
+    is_configured: bool = Field(default=False, index=True)
+    credential_env_var: str = ""
+    notes: str = ""
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class Portfolio(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)
@@ -55,10 +69,13 @@ class PortfolioInstrument(SQLModel, table=True):
 
 
 class Bar(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("instrument_id", "frequency", "timestamp", "adjust", name="uq_bar_identity"),)
+
     id: Optional[int] = Field(default=None, primary_key=True)
     instrument_id: int = Field(foreign_key="instrument.id", index=True)
     frequency: str = Field(index=True)
     timestamp: datetime = Field(index=True)
+    adjust: str = Field(default="", index=True)
     open: float
     high: float
     low: float
@@ -71,8 +88,14 @@ class Bar(SQLModel, table=True):
 class DataImportTask(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     source: str
+    instrument_id: Optional[int] = Field(default=None, foreign_key="instrument.id", index=True)
+    frequency: str = Field(default="", index=True)
+    adjust: str = Field(default="", index=True)
     status: TaskStatus = Field(default=TaskStatus.pending, index=True)
     message: str = ""
+    rows_imported: int = 0
+    rows_updated: int = 0
+    request_params: dict = Field(default_factory=dict, sa_column=Column(JSON))
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -81,6 +104,7 @@ class DataImportTask(SQLModel, table=True):
 class MarketDataSchedule(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    provider: str = Field(default="akshare", index=True)
     frequency: str = Field(default="5m", index=True)
     start_date: str
     end_date: str

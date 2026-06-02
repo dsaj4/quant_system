@@ -4,6 +4,7 @@ httpx==0.28.1
 pydantic-settings==2.12.0
 pytest==9.0.2
 sqlmodel==0.0.27
+tushare>=1.4.0
 uvicorn[standard]==0.38.0
 vnpy==4.4.0
 vnpy_algotrading==1.1.0

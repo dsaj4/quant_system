@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import json
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlmodel import Session, select
@@ -34,7 +33,21 @@ def execute_market_data_schedule(schedule_id: int) -> ScheduleExecutionResult:
         if not instrument:
             raise ValueError("Scheduled instrument not found")
 
-        task = DataImportTask(source="akshare", status=TaskStatus.running, started_at=utc_now())
+        task = DataImportTask(
+            source=schedule.provider,
+            instrument_id=schedule.instrument_id,
+            frequency=schedule.frequency,
+            adjust=schedule.adjust,
+            request_params={
+                "provider": schedule.provider,
+                "start_date": schedule.start_date,
+                "end_date": schedule.end_date,
+                "adjust": schedule.adjust,
+                "schedule_id": schedule.id,
+            },
+            status=TaskStatus.running,
+            started_at=utc_now(),
+        )
         session.add(task)
         session.commit()
         session.refresh(task)
@@ -43,30 +56,28 @@ def execute_market_data_schedule(schedule_id: int) -> ScheduleExecutionResult:
             result = fetch_public_bars(
                 session,
                 instrument_symbol=instrument.symbol,
+                instrument_exchange=instrument.exchange,
                 instrument_id=instrument.id or 0,
                 frequency=schedule.frequency,
                 start_date=schedule.start_date,
                 end_date=schedule.end_date,
                 adjust=schedule.adjust,
+                provider_name=schedule.provider,
             )
             task.status = TaskStatus.succeeded
-            task.message = json.dumps(
-                {
-                    "message": "Scheduled public data fetch succeeded",
-                    "rows_imported": result.rows_imported,
-                    "rows_updated": result.rows_updated,
-                }
-            )
+            task.message = "Scheduled public data fetch succeeded"
+            task.rows_imported = result.rows_imported
+            task.rows_updated = result.rows_updated
             action = "market_data.schedule.run.succeeded"
         except (RuntimeError, ValueError) as exc:
             task.status = TaskStatus.failed
-            task.message = json.dumps({"message": str(exc), "rows_imported": 0, "rows_updated": 0})
+            task.message = str(exc)
             action = "market_data.schedule.run.failed"
 
         task.finished_at = utc_now()
         schedule.last_run_at = task.finished_at
         schedule.last_status = task.status
-        schedule.last_message = json.loads(task.message)["message"]
+        schedule.last_message = task.message
         session.add(task)
         session.add(schedule)
         session.commit()
@@ -78,7 +89,12 @@ def execute_market_data_schedule(schedule_id: int) -> ScheduleExecutionResult:
             actor="scheduler",
             target_type="market_data_schedule",
             target_id=str(schedule.id),
-            detail={"instrument_id": schedule.instrument_id, "frequency": schedule.frequency},
+            detail={
+                "instrument_id": schedule.instrument_id,
+                "provider": schedule.provider,
+                "frequency": schedule.frequency,
+                "adjust": schedule.adjust,
+            },
         )
         return ScheduleExecutionResult(
             task_id=task.id or 0,
