@@ -282,6 +282,85 @@ export type PaperRunInput = {
   initial_cash: number
 }
 
+export type NarrativeConfig = {
+  enabled: boolean
+  configured: boolean
+  provider: string
+  llm_provider: string
+  model: string
+}
+
+export type NarrativeStatus = 'pending' | 'running' | 'succeeded' | 'degraded' | 'failed' | 'reviewed'
+
+export type NarrativeModule = {
+  key: string
+  title: string
+  summary: string
+  paragraphs: string[]
+  bullets: string[]
+  visible: boolean
+  default_expanded: boolean
+}
+
+export type NarrativePayload = {
+  enabled: boolean
+  label: string
+  rating: 'positive' | 'neutral' | 'cautious' | string
+  reviewed: boolean
+  disclaimer: string
+  modules: NarrativeModule[]
+}
+
+export type NarrativeRun = {
+  id: number
+  backtest_run_id: number
+  status: NarrativeStatus
+  is_smoke_test: boolean
+  provider: string
+  provider_model: string
+  analysis_date: string
+  quant_rating: string
+  target_scope: string
+  target_summary: Record<string, unknown>
+  ticker_mapping: Record<string, string>
+  coverage_summary: Record<string, unknown>
+  input_summary: Record<string, unknown>
+  provider_structured_summary: Record<string, unknown>
+  provider_raw_suggestion: string
+  provider_conflict: boolean
+  degraded_reasons: string[]
+  degraded_acknowledged_by: string
+  degraded_acknowledged_at: string | null
+  ai_draft_payload: NarrativePayload | Record<string, never>
+  reviewed_payload: NarrativePayload | Record<string, never>
+  reviewed_by: string
+  reviewed_at: string | null
+  review_note: string
+  error_message: string
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type NarrativeGenerateInput = {
+  backtest_run_id: number
+  analysis_date: string
+  is_smoke_test?: boolean
+}
+
+export type NarrativeDraftUpdateInput = {
+  payload: NarrativePayload
+}
+
+export type NarrativeApproveInput = {
+  review_note?: string
+}
+
+export type NarrativeRegenerateInput = {
+  analysis_date: string
+}
+
 export type PublishedSnapshot = {
   id: number
   backtest_run_id: number
@@ -565,6 +644,92 @@ export async function fetchPaperRuns(token: string): Promise<PaperRun[]> {
 
 export async function createPaperRun(token: string, input: PaperRunInput): Promise<PaperRun> {
   return requestJson<PaperRun>('/paper-runs', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function fetchNarrativeConfig(token: string): Promise<NarrativeConfig> {
+  return requestJson<NarrativeConfig>('/narratives/config', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function generateNarrative(token: string, input: NarrativeGenerateInput): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>('/narratives/generate', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function fetchNarrativeForBacktest(token: string, backtestId: number): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/backtests/${backtestId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function updateNarrativeDraft(
+  token: string,
+  narrativeId: number,
+  input: NarrativeDraftUpdateInput,
+): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/${narrativeId}/draft`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function acknowledgeNarrativeDegraded(token: string, narrativeId: number): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/${narrativeId}/acknowledge-degraded`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function approveNarrative(
+  token: string,
+  narrativeId: number,
+  input: NarrativeApproveInput = {},
+): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/${narrativeId}/approve`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function withdrawNarrativeReview(token: string, narrativeId: number): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/${narrativeId}/withdraw-review`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export async function regenerateNarrative(
+  token: string,
+  narrativeId: number,
+  input: NarrativeRegenerateInput,
+): Promise<NarrativeRun> {
+  return requestJson<NarrativeRun>(`/narratives/${narrativeId}/regenerate`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
