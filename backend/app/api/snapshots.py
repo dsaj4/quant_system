@@ -17,6 +17,7 @@ from app.models import (
     User,
     utc_now,
 )
+from app.services.narratives import build_public_narrative_payload, get_current_narrative_for_backtest
 from app.services.operation_log import record_operation
 
 router = APIRouter(tags=["snapshots"])
@@ -296,9 +297,9 @@ def build_trade_summary(backtest: BacktestRun) -> dict:
     }
 
 
-def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) -> dict:
+def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User, session: SessionDep) -> dict:
     report_metadata = build_report_metadata(backtest, title, publisher)
-    return {
+    payload = {
         "title": title,
         "strategy_id": backtest.strategy_id,
         "strategy_version": "0.1.0",
@@ -324,6 +325,10 @@ def build_immutable_payload(backtest: BacktestRun, title: str, publisher: User) 
             "Backtest results are simulated and do not represent real-money trading.",
         ),
     }
+    narrative = get_current_narrative_for_backtest(session, backtest.id)
+    if narrative and narrative.status == "reviewed" and narrative.reviewed_payload:
+        payload["narrative"] = build_public_narrative_payload(narrative)
+    return payload
 
 
 @router.get("/snapshots", response_model=list[SnapshotResponse])
@@ -359,7 +364,7 @@ def publish_snapshot(
         version=version,
         status=SnapshotStatus.published,
         title=payload.title.strip(),
-        immutable_payload=build_immutable_payload(backtest, payload.title.strip(), current_user),
+        immutable_payload=build_immutable_payload(backtest, payload.title.strip(), current_user, session),
         published_at=utc_now(),
     )
     session.add(snapshot)
@@ -378,6 +383,15 @@ def publish_snapshot(
         target_id=str(snapshot.id),
         detail={"backtest_run_id": backtest.id, "version": version},
     )
+    if snapshot.immutable_payload.get("narrative"):
+        record_operation(
+            session,
+            action="narrative.publish.included",
+            actor=current_user.username,
+            target_type="published_snapshot",
+            target_id=str(snapshot.id),
+            detail={"backtest_run_id": backtest.id, "version": version},
+        )
     return SnapshotPublishResponse(snapshot=snapshot_response(snapshot), share_token=share_token)
 
 
