@@ -7,6 +7,7 @@ from app.api import (
     instruments,
     market_data,
     market_data_schedules,
+    narratives,
     operation_logs,
     paper_runs,
     portfolios,
@@ -22,6 +23,7 @@ api_router.include_router(health.router)
 api_router.include_router(instruments.router)
 api_router.include_router(market_data.router)
 api_router.include_router(market_data_schedules.router)
+api_router.include_router(narratives.router)
 api_router.include_router(operation_logs.router)
 api_router.include_router(paper_runs.router)
 api_router.include_router(portfolios.router)
