@@ -121,8 +121,9 @@ def narrative_response(run: NarrativeRun) -> NarrativeRunResponse:
 
 
 def _run_generation_background(narrative_id: int, provider) -> None:
+    settings = get_settings()
     with Session(engine) as session:
-        run_narrative_generation(session, narrative_id, provider)
+        run_narrative_generation(session, narrative_id, provider, timeout_seconds=settings.trading_agents_timeout_seconds)
 
 
 def _bad_request(exc: ValueError) -> HTTPException:

@@ -1,3 +1,4 @@
+import time
 from copy import deepcopy
 from datetime import date
 
@@ -22,6 +23,12 @@ from app.services.narratives import (
 class DisabledProvider(MockNarrativeProvider):
     def is_configured(self) -> bool:
         return False
+
+
+class SlowProvider(MockNarrativeProvider):
+    def run(self, input_summary):
+        time.sleep(0.05)
+        return super().run(input_summary)
 
 
 def make_session() -> Session:
@@ -198,6 +205,34 @@ def test_generation_can_finish_as_degraded_or_failed() -> None:
         failed = run_narrative_generation(session, run.id, provider)
         assert failed.status == NarrativeStatus.failed
         assert failed.error_message == "provider failed"
+
+
+def test_generation_timeout_marks_run_failed_and_releases_running_lock() -> None:
+    with make_session() as session:
+        backtest = add_instrument_backtest(session)
+        provider = SlowProvider()
+        run = start_narrative_generation(
+            session,
+            backtest.id,
+            analysis_date=date(2026, 2, 1),
+            provider=provider,
+            actor="admin",
+            today=date(2026, 6, 3),
+        )
+
+        failed = run_narrative_generation(session, run.id, provider, timeout_seconds=0.01)
+
+        assert failed.status == NarrativeStatus.failed
+        assert "timed out" in failed.error_message
+        replacement = start_narrative_generation(
+            session,
+            backtest.id,
+            analysis_date=date(2026, 2, 1),
+            provider=MockNarrativeProvider(),
+            actor="admin",
+            today=date(2026, 6, 3),
+        )
+        assert replacement.status == NarrativeStatus.pending
 
 
 def test_degraded_run_must_be_acknowledged_before_review() -> None:

@@ -25,6 +25,7 @@ Optional:
 QUANT_TRADING_AGENTS_RESULTS_DIR=./data/tradingagents/logs
 QUANT_TRADING_AGENTS_CACHE_DIR=./data/tradingagents/cache
 QUANT_TRADING_AGENTS_MEMORY_LOG_PATH=./data/tradingagents/memory/trading_memory.md
+QUANT_TRADING_AGENTS_TIMEOUT_SECONDS=900
 QUANT_TRADING_AGENTS_NEWS_ARTICLE_LIMIT=10
 QUANT_TRADING_AGENTS_GLOBAL_NEWS_ARTICLE_LIMIT=5
 ```
@@ -35,7 +36,7 @@ QUANT_TRADING_AGENTS_GLOBAL_NEWS_ARTICLE_LIMIT=5
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-The backend lazy-imports TradingAgents, so the app can still start if the package is absent. The real smoke test requires `tradingagents==0.2.5`.
+The backend lazy-imports TradingAgents, so the app can still start if the package is absent. The real smoke test requires the TradingAgents package from the TauricResearch GitHub repository because the earlier `tradingagents==0.2.5` pin is not available on PyPI.
 
 ## Start Backend
 
@@ -71,6 +72,7 @@ Expected acceptable outcomes:
 Failure outcome:
 
 - `failed`: inspect `error_message`, backend logs, provider keys, and external data/API availability
+- timeout failure: increase `QUANT_TRADING_AGENTS_TIMEOUT_SECONDS` for a full external run, or reduce TradingAgents analyst/data scope before retrying
 
 ## Publishing A Test Snapshot
 

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
 from datetime import date
 from typing import Any
@@ -139,7 +140,33 @@ def start_narrative_generation(
     )
 
 
-def run_narrative_generation(session: Session, narrative_id: int | None, provider: NarrativeProvider) -> NarrativeRun:
+def _run_provider_with_timeout(
+    provider: NarrativeProvider,
+    input_summary: dict[str, Any],
+    *,
+    timeout_seconds: int | None,
+):
+    if not timeout_seconds or timeout_seconds <= 0:
+        return provider.run(input_summary)
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(provider.run, input_summary)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except TimeoutError as exc:
+        future.cancel()
+        raise RuntimeError(f"TradingAgents narrative provider timed out after {timeout_seconds} seconds") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def run_narrative_generation(
+    session: Session,
+    narrative_id: int | None,
+    provider: NarrativeProvider,
+    *,
+    timeout_seconds: int | None = None,
+) -> NarrativeRun:
     run = _require_run(session, narrative_id)
     run.status = NarrativeStatus.running
     run.started_at = utc_now()
@@ -149,7 +176,7 @@ def run_narrative_generation(session: Session, narrative_id: int | None, provide
     session.refresh(run)
 
     try:
-        provider_result = provider.run(run.input_summary)
+        provider_result = _run_provider_with_timeout(provider, run.input_summary, timeout_seconds=timeout_seconds)
         normalized = normalize_provider_result(
             provider_result,
             quant_rating=calculate_quant_rating(session.get(BacktestRun, run.backtest_run_id)).rating,
