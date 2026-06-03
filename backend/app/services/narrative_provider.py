@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from enum import Enum
+import os
 from typing import Any, Protocol
 
-from app.core.config import Settings
+from app.core.config import PROJECT_ROOT, Settings
 from app.services.narrative_rating import QuantRating
 
 
@@ -90,6 +91,7 @@ class TradingAgentsNarrativeProvider:
         )
 
     def _config(self) -> dict[str, Any]:
+        data_vendor = self.settings.trading_agents_data_vendor or "yfinance"
         return {
             "llm_provider": self.settings.trading_agents_llm_provider,
             "deep_think_llm": self.settings.trading_agents_deep_think_llm,
@@ -101,12 +103,35 @@ class TradingAgentsNarrativeProvider:
             "results_dir": self.settings.trading_agents_results_dir,
             "data_cache_dir": self.settings.trading_agents_cache_dir,
             "memory_log_path": self.settings.trading_agents_memory_log_path,
+            "news_article_limit": self.settings.trading_agents_news_article_limit,
+            "global_news_article_limit": self.settings.trading_agents_global_news_article_limit,
+            "data_vendors": {
+                "core_stock_apis": data_vendor,
+                "technical_indicators": data_vendor,
+                "fundamental_data": data_vendor,
+                "news_data": data_vendor,
+            },
         }
+
+    def _load_env_keys(self) -> None:
+        for env_path in (PROJECT_ROOT / ".env", PROJECT_ROOT / "backend" / ".env"):
+            if not env_path.exists():
+                continue
+            for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                key = key.strip()
+                if key.startswith("QUANT_") or key in os.environ:
+                    continue
+                os.environ[key] = value.strip().strip('"').strip("'")
 
     def run(self, input_summary: dict[str, Any]) -> ProviderResult:
         if not self.is_configured():
             raise RuntimeError("TradingAgents narrative provider is not configured")
 
+        self._load_env_keys()
         try:
             from tradingagents.default_config import DEFAULT_CONFIG
             from tradingagents.graph.trading_graph import TradingAgentsGraph

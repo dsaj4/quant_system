@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     trading_agents_results_dir: str = "./data/tradingagents/logs"
     trading_agents_cache_dir: str = "./data/tradingagents/cache"
     trading_agents_memory_log_path: str = "./data/tradingagents/memory/trading_memory.md"
+    trading_agents_news_article_limit: int = 10
+    trading_agents_global_news_article_limit: int = 5
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:5174",
