@@ -63,6 +63,7 @@ if (-not $narrativeConfig.configured) {
   throw "TradingAgents narrative provider is not configured. Check QUANT_TRADING_AGENTS_* settings."
 }
 Write-Host "Narrative provider configured:" $narrativeConfig.llm_provider $narrativeConfig.model
+Write-Host "Selected analysts:" ($narrativeConfig.selected_analysts -join ",")
 
 $instruments = Invoke-Api -Method "GET" -Path "/instruments" -Token $token
 $instrument = $instruments | Where-Object { $_.symbol -eq "600519" -and $_.exchange -eq "SH" } | Select-Object -First 1

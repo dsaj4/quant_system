@@ -30,6 +30,7 @@ class NarrativeConfigResponse(BaseModel):
     provider: str
     llm_provider: str
     model: str
+    selected_analysts: list[str]
 
 
 class NarrativeGenerateRequest(BaseModel):
@@ -140,6 +141,7 @@ def get_narrative_config(current_user: User = Depends(get_current_user)) -> Narr
         provider="trading_agents",
         llm_provider=settings.trading_agents_llm_provider,
         model=settings.trading_agents_deep_think_llm,
+        selected_analysts=provider.selected_analysts(),
     )
 
 

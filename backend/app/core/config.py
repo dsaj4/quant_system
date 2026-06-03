@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     trading_agents_deep_think_llm: str = ""
     trading_agents_quick_think_llm: str = ""
     trading_agents_output_language: str = "Chinese"
+    trading_agents_selected_analysts: str = "market,social,news,fundamentals"
     trading_agents_max_debate_rounds: int = 1
     trading_agents_max_risk_rounds: int = 1
     trading_agents_checkpoint_enabled: bool = False

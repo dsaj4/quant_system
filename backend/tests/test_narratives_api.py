@@ -79,7 +79,8 @@ def test_narrative_config_does_not_leak_secrets() -> None:
     payload = response.json()
     assert "api_key" not in str(payload).lower()
     assert "secret" not in str(payload).lower()
-    assert set(payload) == {"enabled", "configured", "provider", "llm_provider", "model"}
+    assert set(payload) == {"enabled", "configured", "provider", "llm_provider", "model", "selected_analysts"}
+    assert isinstance(payload["selected_analysts"], list)
 
 
 def test_generate_and_fetch_current_narrative(monkeypatch) -> None:

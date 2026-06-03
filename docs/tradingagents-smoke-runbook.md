@@ -14,6 +14,7 @@ QUANT_TRADING_AGENTS_LLM_PROVIDER=deepseek
 QUANT_TRADING_AGENTS_DEEP_THINK_LLM=deepseek-reasoner
 QUANT_TRADING_AGENTS_QUICK_THINK_LLM=deepseek-chat
 QUANT_TRADING_AGENTS_OUTPUT_LANGUAGE=Chinese
+QUANT_TRADING_AGENTS_SELECTED_ANALYSTS=market,social,news,fundamentals
 QUANT_TRADING_AGENTS_DATA_VENDOR=yfinance
 DEEPSEEK_API_KEY=...
 ALPHA_VANTAGE_API_KEY=...
@@ -73,6 +74,16 @@ Failure outcome:
 
 - `failed`: inspect `error_message`, backend logs, provider keys, and external data/API availability
 - timeout failure: increase `QUANT_TRADING_AGENTS_TIMEOUT_SECONDS` for a full external run, or reduce TradingAgents analyst/data scope before retrying
+
+For a faster connectivity smoke, start the backend with:
+
+```env
+QUANT_TRADING_AGENTS_SELECTED_ANALYSTS=market
+QUANT_TRADING_AGENTS_DEEP_THINK_LLM=deepseek-chat
+QUANT_TRADING_AGENTS_QUICK_THINK_LLM=deepseek-chat
+```
+
+Use the full analyst set again before treating provider output quality as production-ready.
 
 ## Publishing A Test Snapshot
 

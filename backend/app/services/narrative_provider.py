@@ -90,6 +90,14 @@ class TradingAgentsNarrativeProvider:
             and self.settings.trading_agents_quick_think_llm
         )
 
+    def selected_analysts(self) -> list[str]:
+        analysts = [
+            analyst.strip()
+            for analyst in (self.settings.trading_agents_selected_analysts or "").split(",")
+            if analyst.strip()
+        ]
+        return analysts or ["market", "social", "news", "fundamentals"]
+
     def _config(self) -> dict[str, Any]:
         data_vendor = self.settings.trading_agents_data_vendor or "yfinance"
         return {
@@ -150,7 +158,7 @@ class TradingAgentsNarrativeProvider:
 
         config = DEFAULT_CONFIG.copy()
         config.update(self._config())
-        graph = TradingAgentsGraph(debug=False, config=config)
+        graph = TradingAgentsGraph(selected_analysts=self.selected_analysts(), debug=False, config=config)
         final_state, decision = graph.propagate(ticker, analysis_date)
 
         return ProviderResult(

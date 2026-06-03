@@ -124,6 +124,7 @@ export function NarrativeSection({
     () => [
       { label: '配置状态', value: config?.configured ? '已配置' : '未配置' },
       { label: '模型', value: config?.model || '-' },
+      { label: '分析模块', value: config?.selected_analysts?.join(', ') || '-' },
       { label: '回测', value: selectedBacktest ? `#${selectedBacktest.id}` : '-' },
       { label: '评级', value: ratingText(narrative?.quant_rating) },
       { label: '状态', value: statusText(narrative?.status) },

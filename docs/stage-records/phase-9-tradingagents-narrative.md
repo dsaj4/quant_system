@@ -21,6 +21,7 @@ Add a reviewed, explainable, and auditable research narrative layer to the exist
 - Added an admin review workspace for AI research narratives.
 - Added client display rendering after charts and before trade records.
 - Added TradingAgents smoke script and runbook.
+- Added configurable TradingAgents analyst scope so smoke runs can use a reduced analyst set without changing the full default provider scope.
 
 ## Safety Boundaries
 
@@ -39,7 +40,7 @@ Backend:
 .\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-Result: `96 passed`.
+Result: `97 passed`.
 
 Admin frontend:
 
@@ -70,7 +71,7 @@ Real TradingAgents smoke:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_tradingagents_smoke.ps1 -ApiBase "http://127.0.0.1:8000/api"
 ```
 
-Observed result with `QUANT_TRADING_AGENTS_TIMEOUT_SECONDS=60`:
+Initial observed result with `QUANT_TRADING_AGENTS_TIMEOUT_SECONDS=60` and the full analyst set:
 
 - Backend health: ok.
 - Provider config: DeepSeek configured.
@@ -81,9 +82,28 @@ Observed result with `QUANT_TRADING_AGENTS_TIMEOUT_SECONDS=60`:
 
 This confirms the integration path is reachable and the timeout guard prevents permanent `running` state. It does not yet confirm that the real TradingAgents provider can produce an acceptable draft within the available external API/network window.
 
+Successful reduced-scope smoke with:
+
+```env
+QUANT_TRADING_AGENTS_SELECTED_ANALYSTS=market
+QUANT_TRADING_AGENTS_DEEP_THINK_LLM=deepseek-chat
+QUANT_TRADING_AGENTS_QUICK_THINK_LLM=deepseek-chat
+QUANT_TRADING_AGENTS_TIMEOUT_SECONDS=300
+```
+
+- Backend health: ok.
+- Provider config: DeepSeek `deepseek-chat`.
+- Selected analysts: `market`.
+- Smoke backtest: `93`, succeeded.
+- Narrative run: `57`, succeeded on poll 13.
+- Smoke flag: true.
+- Ticker mapping: `600519.SH -> 600519.SS`.
+- AI draft generated with 8 modules.
+- Can review: true.
+
 ## Remaining Work
 
-- Re-run the real smoke with a longer timeout once external API latency and quota are acceptable.
-- If the real provider still times out, profile TradingAgents analyst selection, data vendor calls, and DeepSeek response latency.
+- Review the first successful real TradingAgents smoke draft in the admin workspace before publishing a smoke/test snapshot.
+- Re-run a full analyst-set smoke when external API latency and quota are acceptable.
 - Tune the module normalization rules after reviewing the first successful real TradingAgents draft.
 - Publish only explicitly marked smoke/test snapshots during validation.

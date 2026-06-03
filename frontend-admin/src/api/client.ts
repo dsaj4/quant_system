@@ -288,6 +288,7 @@ export type NarrativeConfig = {
   provider: string
   llm_provider: string
   model: string
+  selected_analysts: string[]
 }
 
 export type NarrativeStatus = 'pending' | 'running' | 'succeeded' | 'degraded' | 'failed' | 'reviewed'

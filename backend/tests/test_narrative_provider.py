@@ -23,6 +23,20 @@ def test_missing_provider_config_reports_disabled() -> None:
     assert provider.is_configured() is False
 
 
+def test_provider_selected_analysts_can_be_configured_for_smoke_runs() -> None:
+    provider = TradingAgentsNarrativeProvider(
+        Settings(
+            trading_agents_enabled=True,
+            trading_agents_llm_provider="deepseek",
+            trading_agents_deep_think_llm="deepseek-chat",
+            trading_agents_quick_think_llm="deepseek-chat",
+            trading_agents_selected_analysts="market, news",
+        )
+    )
+
+    assert provider.selected_analysts() == ["market", "news"]
+
+
 def test_mock_provider_returns_succeeded_structured_output() -> None:
     provider = MockNarrativeProvider(
         status=ProviderRunStatus.succeeded,
