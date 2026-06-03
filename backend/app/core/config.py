@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         env_file=(PROJECT_ROOT / ".env", PROJECT_ROOT / "backend" / ".env"),
         env_prefix="QUANT_",
         case_sensitive=False,
+        extra="ignore",
     )
 
     @property

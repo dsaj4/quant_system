@@ -23,6 +23,15 @@ class SnapshotStatus(str, Enum):
     revoked = "revoked"
 
 
+class NarrativeStatus(str, Enum):
+    pending = "pending"
+    running = "running"
+    succeeded = "succeeded"
+    degraded = "degraded"
+    failed = "failed"
+    reviewed = "reviewed"
+
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
@@ -135,6 +144,39 @@ class BacktestRun(SQLModel, table=True):
     result_payload: dict = Field(default_factory=dict, sa_column=Column(JSON))
     message: str = ""
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class NarrativeRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    backtest_run_id: int = Field(foreign_key="backtestrun.id", index=True)
+    status: NarrativeStatus = Field(default=NarrativeStatus.pending, index=True)
+    is_smoke_test: bool = Field(default=False, index=True)
+    provider: str = Field(default="trading_agents", index=True)
+    provider_model: str = ""
+    analysis_date: str = Field(index=True)
+    quant_rating: str = Field(default="neutral", index=True)
+    quant_rating_inputs: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    target_scope: str = Field(default="instrument", index=True)
+    target_summary: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    ticker_mapping: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    coverage_summary: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    input_summary: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    provider_structured_summary: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    provider_raw_suggestion: str = ""
+    provider_conflict: bool = Field(default=False, index=True)
+    degraded_reasons: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    degraded_acknowledged_by: str = ""
+    degraded_acknowledged_at: Optional[datetime] = None
+    ai_draft_payload: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    reviewed_payload: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    reviewed_by: str = ""
+    reviewed_at: Optional[datetime] = None
+    review_note: str = ""
+    error_message: str = ""
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class PaperRun(SQLModel, table=True):
