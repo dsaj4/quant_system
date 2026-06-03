@@ -45,6 +45,30 @@ def test_admin_can_save_parameter_set_with_defaults() -> None:
         assert "strategy_parameter_set.create" in actions
 
 
+def test_admin_can_save_a_share_t0_vwap_parameter_set_with_defaults() -> None:
+    with TestClient(app) as client:
+        token = login_token(client)
+
+        response = client.post(
+            "/api/strategy-parameter-sets",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "strategy_id": "a_share_t0_vwap",
+                "name": "A-share T0 VWAP config",
+                "parameters": {"channel_k": 1.5},
+            },
+        )
+
+        assert response.status_code == 200
+        parameter_set = response.json()
+        assert parameter_set["strategy_id"] == "a_share_t0_vwap"
+        assert parameter_set["parameters"]["channel_k"] == 1.5
+        assert parameter_set["parameters"]["channel_window"] == 20
+        assert parameter_set["parameters"]["base_position_percent"] == 40
+        assert parameter_set["parameters"]["buy_fee_rate"] == 0.00026
+        assert parameter_set["parameters"]["sell_fee_rate"] == 0.00076
+
+
 def test_strategy_parameter_set_rejects_unknown_strategy() -> None:
     with TestClient(app) as client:
         token = login_token(client)

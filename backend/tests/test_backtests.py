@@ -164,6 +164,25 @@ def make_parameter_set(parameters: dict) -> StrategyParameterSet:
     )
 
 
+def make_a_share_t0_parameter_set(parameters: dict) -> StrategyParameterSet:
+    return StrategyParameterSet(
+        strategy_id="a_share_t0_vwap",
+        name="A-share T0 VWAP config",
+        parameters={
+            "base_position_percent": 40.0,
+            "channel_k": 1.0,
+            "channel_window": 3,
+            "t_fraction": 1 / 3,
+            "min_lot": 100,
+            "stop_open_time": "14:50",
+            "force_close_time": "14:55",
+            "buy_fee_rate": 0.00026,
+            "sell_fee_rate": 0.00076,
+            **parameters,
+        },
+    )
+
+
 def test_backtest_engine_applies_base_and_trade_position_percent() -> None:
     result = run_single_instrument_backtest(
         bars=[
@@ -237,6 +256,59 @@ def test_backtest_engine_records_ma_filtered_signal_explanations() -> None:
     assert result.result_payload["signal_summary"]["latest_decision"] == "blocked_by_ma_filter"
 
 
+def test_a_share_t0_vwap_strategy_generates_channel_trades_and_baseline() -> None:
+    result = run_single_instrument_backtest(
+        bars=[
+            make_bar("2026-01-02T09:35:00", 100.0),
+            make_bar("2026-01-02T09:40:00", 100.0),
+            make_bar("2026-01-02T09:45:00", 100.0),
+            make_bar("2026-01-02T09:50:00", 70.0),
+            make_bar("2026-01-02T09:55:00", 95.0),
+            make_bar("2026-01-02T10:00:00", 110.0),
+        ],
+        parameter_set=make_a_share_t0_parameter_set({}),
+        initial_cash=100000,
+    )
+
+    trades = result.result_payload["trade_table"]
+    assert result.result_payload["strategy_id"] == "a_share_t0_vwap"
+    assert result.metrics["bar_count"] == 6
+    assert result.metrics["trade_count"] == 2
+    assert trades[0]["side"] == "buy"
+    assert trades[0]["quantity"] == 100
+    assert trades[0]["reason"] == "positive_t_open_below_support"
+    assert trades[1]["side"] == "sell"
+    assert trades[1]["reason"] == "positive_t_close_above_vwap"
+    assert result.result_payload["trade_markers"] == [
+        {"timestamp": trades[0]["timestamp"], "side": "buy", "price": 95.0, "reason": "positive_t_open_below_support"},
+        {"timestamp": trades[1]["timestamp"], "side": "sell", "price": 110.0, "reason": "positive_t_close_above_vwap"},
+    ]
+    assert result.result_payload["t0_channels"]["vwap"]
+    assert result.result_payload["baseline"]["baseline_hold_profit"] == approx(4000)
+    assert result.result_payload["baseline"]["excess_profit_vs_baseline"] > 0
+    assert result.result_payload["signal_summary"]["executed_signal_count"] == 2
+    assert result.result_payload["execution_assumptions"]["buy_fee_rate"] == 0.00026
+    assert result.result_payload["execution_assumptions"]["sell_fee_rate"] == 0.00076
+
+
+def test_a_share_t0_vwap_strategy_respects_lot_size_when_base_position_is_too_small() -> None:
+    result = run_single_instrument_backtest(
+        bars=[
+            make_bar("2026-01-02T09:35:00", 100.0),
+            make_bar("2026-01-02T09:40:00", 100.0),
+            make_bar("2026-01-02T09:45:00", 100.0),
+            make_bar("2026-01-02T09:50:00", 70.0),
+            make_bar("2026-01-02T09:55:00", 95.0),
+        ],
+        parameter_set=make_a_share_t0_parameter_set({"base_position_percent": 10.0}),
+        initial_cash=100000,
+    )
+
+    assert result.metrics["trade_count"] == 0
+    assert result.result_payload["signal_summary"]["latest_decision"] == "blocked_by_lot_size"
+    assert result.result_payload["execution_assumptions"]["t_size"] == 0
+
+
 def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
     with TestClient(app) as client:
         token = login_token(client)
@@ -278,6 +350,54 @@ def test_admin_can_create_backtest_from_saved_parameter_set() -> None:
         )
         actions = [item["action"] for item in logs_response.json()]
         assert "backtest.create.succeeded" in actions
+
+
+def test_admin_can_create_a_share_t0_vwap_backtest_from_saved_parameter_set() -> None:
+    with TestClient(app) as client:
+        token = login_token(client)
+        instrument_id = create_instrument(client, token, "T0API1")
+        parameter_response = client.post(
+            "/api/strategy-parameter-sets",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "strategy_id": "a_share_t0_vwap",
+                "name": "API T0 config",
+                "parameters": {"channel_k": 1.0, "channel_window": 3},
+            },
+        )
+        assert parameter_response.status_code == 200
+        parameter_set_id = parameter_response.json()["id"]
+        import_custom_bars(
+            client,
+            token,
+            instrument_id,
+            [
+                ("2026-01-02 09:35:00", 100.0),
+                ("2026-01-02 09:40:00", 100.0),
+                ("2026-01-02 09:45:00", 100.0),
+                ("2026-01-02 09:50:00", 70.0),
+                ("2026-01-02 09:55:00", 95.0),
+                ("2026-01-02 10:00:00", 110.0),
+            ],
+        )
+
+        response = client.post(
+            "/api/backtests",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "instrument_id": instrument_id,
+                "frequency": "5m",
+                "parameter_set_id": parameter_set_id,
+                "initial_cash": 100000,
+            },
+        )
+
+        assert response.status_code == 200
+        backtest = response.json()
+        assert backtest["strategy_id"] == "a_share_t0_vwap"
+        assert backtest["metrics"]["trade_count"] == 2
+        assert backtest["result_payload"]["t0_channels"]["support"]
+        assert backtest["result_payload"]["baseline"]["excess_profit_vs_baseline"] > 0
 
 
 def test_admin_can_create_fixed_portfolio_backtest() -> None:

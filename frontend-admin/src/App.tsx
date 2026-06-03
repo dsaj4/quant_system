@@ -3,14 +3,16 @@ import {
   AreaChartOutlined,
   AuditOutlined,
   BarChartOutlined,
+  CheckCircleOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
+  DownOutlined,
+  FileSearchOutlined,
   FundProjectionScreenOutlined,
-  LineChartOutlined,
   LinkOutlined,
   PlayCircleOutlined,
-  SafetyCertificateOutlined,
   StockOutlined,
+  UpOutlined,
 } from '@ant-design/icons'
 import {
   Alert,
@@ -86,11 +88,19 @@ import {
   type StrategyTemplate,
   type UserProfile,
 } from './api/client'
+import { CommandRail, type CommandRailItem } from './components/CommandRail'
+import { CopyLinkButton } from './components/CopyLinkButton'
+import { AuditSection } from './sections/AuditSection'
+import { BacktestSection } from './sections/BacktestSection'
+import { DataSection } from './sections/DataSection'
+import { OverviewSection } from './sections/OverviewSection'
+import { PaperSection } from './sections/PaperSection'
+import { PublicationSection } from './sections/PublicationSection'
+import { StrategySection } from './sections/StrategySection'
 import './App.css'
 
 const { Header, Sider, Content } = Layout
 const { Text, Title } = Typography
-const DISPLAY_BASE_URL = import.meta.env.VITE_DISPLAY_BASE_URL ?? 'http://127.0.0.1:5184'
 
 const modules = [
   { key: 'portfolios', icon: <StockOutlined />, label: '组合管理' },
@@ -103,15 +113,29 @@ const modules = [
   { key: 'logs', icon: <AuditOutlined />, label: '操作日志' },
 ]
 
-const tasks = [
-  { key: 1, name: '沪深300网格回测', type: '回测', status: 'pending', updatedAt: '2026-06-01 10:30' },
-  { key: 2, name: '600519.SH 5分钟行情同步', type: '数据', status: 'succeeded', updatedAt: '2026-06-01 09:42' },
-  { key: 3, name: '滚动做T策略模拟运行', type: '模拟', status: 'running', updatedAt: '2026-06-01 09:30' },
+void modules
+
+const researchModules = [
+  { key: 'overview', icon: <AreaChartOutlined />, label: '演示总览' },
+  { key: 'data', icon: <DatabaseOutlined />, label: '行情数据' },
+  { key: 'strategy', icon: <DeploymentUnitOutlined />, label: '策略参数' },
+  { key: 'backtest', icon: <BarChartOutlined />, label: '回测复核' },
+  { key: 'publication', icon: <FundProjectionScreenOutlined />, label: '报告发布' },
+  { key: 'paper', icon: <PlayCircleOutlined />, label: '模拟记录' },
+  { key: 'audit', icon: <AuditOutlined />, label: '审计边界' },
 ]
 
-function clientReportUrl(shareToken: string): string {
-  return `${DISPLAY_BASE_URL.replace(/\/$/, '')}/?token=${encodeURIComponent(shareToken)}`
-}
+const commandRailItems: CommandRailItem[] = [
+  { key: 'instrument', label: '标的', icon: <StockOutlined />, section: 'data' },
+  { key: 'market-data', label: '行情', icon: <DatabaseOutlined />, section: 'data' },
+  { key: 'quality', label: '质量', icon: <CheckCircleOutlined />, section: 'data' },
+  { key: 'parameters', label: '参数', icon: <DeploymentUnitOutlined />, section: 'strategy' },
+  { key: 'backtest', label: '回测', icon: <BarChartOutlined />, section: 'backtest' },
+  { key: 'review', label: '复核', icon: <FileSearchOutlined />, section: 'backtest' },
+  { key: 'snapshot', label: '快照', icon: <FundProjectionScreenOutlined />, section: 'publication' },
+  { key: 'share', label: '分享', icon: <LinkOutlined />, section: 'publication' },
+  { key: 'paper', label: '模拟', icon: <PlayCircleOutlined />, section: 'paper' },
+]
 
 function formatPercent(value: number | undefined): string {
   return `${((value ?? 0) * 100).toFixed(2)}%`
@@ -226,10 +250,13 @@ const targetTypeText: Record<string, string> = {
 }
 
 const strategyNameText: Record<string, string> = {
+  'A-share T0 VWAP Channel Strategy': 'A股日内VWAP通道做T策略',
   'Rolling T / Grid Strategy': '滚动做T / 网格策略',
 }
 
 const strategyDescriptionText: Record<string, string> = {
+  'A-share base-position T0 strategy using intraday VWAP standard-deviation channels, 100-share lots, T+1 sellable-position constraints, and separate buy/sell transaction costs.':
+    '面向A股底仓的日内做T策略，使用VWAP标准差通道、100股整手、T+1可卖额度和买卖双边成本生成信号。',
   'Rule-based rolling T strategy for a fixed stock or portfolio. It uses grid thresholds and an optional moving-average filter.':
     '面向固定股票或组合的规则型滚动做T策略，使用网格阈值和可选均线过滤器生成信号。',
 }
@@ -240,6 +267,14 @@ const parameterLabelText: Record<string, string> = {
   'Trade Position Percent': '单次交易仓位',
   'Enable MA Filter': '启用均线过滤',
   'MA Window': '均线窗口',
+  'Channel K': '通道倍数',
+  'Channel Window': '通道窗口',
+  'T Fraction': '单次T仓比例',
+  'Min Lot': '最小交易单位',
+  'Stop Open Time': '停止开仓时间',
+  'Force Close Time': '强制处理时间',
+  'Buy Fee Rate': '买入费率',
+  'Sell Fee Rate': '卖出费率',
 }
 
 const parameterDescriptionText: Record<string, string> = {
@@ -248,6 +283,16 @@ const parameterDescriptionText: Record<string, string> = {
   'Position percentage used by each grid trade.': '每次网格交易使用的仓位比例。',
   'Enable moving-average trend filter before generating signals.': '生成信号前是否启用均线趋势过滤。',
   'Moving-average window used when the filter is enabled.': '启用均线过滤时使用的均线周期。',
+  'Initial base position percentage of cash. ETF trend state can be reflected by choosing 10, 40, or 70.':
+    '用于建立底仓的资金比例，可用10/40/70表达弱势、中性、强势状态。',
+  'Standard-deviation multiplier for VWAP support and resistance channels.': 'VWAP支撑/压力通道使用的标准差倍数。',
+  'Rolling window used for intraday close-price standard deviation.': '计算日内收盘价滚动标准差的窗口长度。',
+  'Fraction of the base position used for one T0 leg before lot-size rounding.': '单次做T使用的底仓比例，成交前会按整手向下取整。',
+  'Minimum tradable share lot. A-share stocks usually use 100.': '最小可交易股数，A股通常为100股。',
+  'Time after which the strategy stops opening new T0 positions.': '超过该时间后不再新开做T仓位。',
+  'Time after which open T0 legs are force-closed when possible.': '超过该时间后尽可能处理未平的T仓。',
+  'Buy-side transaction cost rate.': '买入侧交易成本费率。',
+  'Sell-side transaction cost rate including stamp duty.': '卖出侧交易成本费率，包含印花税口径。',
 }
 
 const dataMessageText: Record<string, string> = {
@@ -372,6 +417,39 @@ function tradeValue(trade: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value : '-'
 }
 
+function strategyTemplateRank(strategy: StrategyTemplate): number {
+  if (strategy.strategy_id === 'a_share_t0_vwap') {
+    return 0
+  }
+  if (strategy.strategy_id === 'rolling_t_grid') {
+    return 1
+  }
+  return 10
+}
+
+function formatStrategyConfigParameters(parameterSet: StrategyParameterSet): string {
+  const parameters = parameterSet.parameters
+  if (parameterSet.strategy_id === 'a_share_t0_vwap') {
+    return [
+      `底仓 ${parameters.base_position_percent ?? '-'}%`,
+      `K=${parameters.channel_k ?? '-'}`,
+      `窗口 ${parameters.channel_window ?? '-'}`,
+      `整手 ${parameters.min_lot ?? '-'}`,
+    ].join(' / ')
+  }
+  if (parameterSet.strategy_id === 'rolling_t_grid') {
+    return [
+      `网格 ${parameters.grid_percent ?? '-'}%`,
+      `底仓 ${parameters.base_position_percent ?? '-'}%`,
+      `均线 ${parameters.enable_ma_filter ? '开' : '关'}`,
+    ].join(' / ')
+  }
+  return Object.entries(parameters)
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(' / ')
+}
+
 function App() {
   const [strategies, setStrategies] = useState<StrategyTemplate[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
@@ -385,7 +463,11 @@ function App() {
   const [snapshots, setSnapshots] = useState<PublishedSnapshot[]>([])
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([])
   const [latestShareToken, setLatestShareToken] = useState('')
+  const [activeSection, setActiveSection] = useState('overview')
+  const [metricsCollapsed, setMetricsCollapsed] = useState(false)
+  const [backtestQuickFocus, setBacktestQuickFocus] = useState(false)
   const [selectedBacktestId, setSelectedBacktestId] = useState<number | null>(null)
+  const [selectedStrategyTemplateId, setSelectedStrategyTemplateId] = useState('')
   const [strategyParameterSets, setStrategyParameterSets] = useState<StrategyParameterSet[]>([])
   const [operationLogs, setOperationLogs] = useState<OperationLog[]>([])
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
@@ -548,20 +630,36 @@ function App() {
   }, [backtests, snapshotForm])
 
   useEffect(() => {
-    const firstStrategy = strategies[0]
-    if (!currentUser || !firstStrategy) {
+    if (!strategies.length) {
+      return
+    }
+
+    const firstStrategy = [...strategies].sort(
+      (left, right) => strategyTemplateRank(left) - strategyTemplateRank(right),
+    )[0]
+    if (!selectedStrategyTemplateId || !strategies.some((strategy) => strategy.strategy_id === selectedStrategyTemplateId)) {
+      setSelectedStrategyTemplateId(firstStrategy.strategy_id)
+    }
+  }, [selectedStrategyTemplateId, strategies])
+
+  useEffect(() => {
+    const selectedStrategy =
+      strategies.find((strategy) => strategy.strategy_id === selectedStrategyTemplateId) ??
+      [...strategies].sort((left, right) => strategyTemplateRank(left) - strategyTemplateRank(right))[0]
+    if (!currentUser || !selectedStrategy) {
       return
     }
 
     const defaultValues = Object.fromEntries(
-      firstStrategy.parameters.map((parameter) => [parameter.name, parameter.default]),
+      selectedStrategy.parameters.map((parameter) => [parameter.name, parameter.default]),
     )
+    strategyParameterForm.resetFields()
     strategyParameterForm.setFieldsValue({
-      name: `${tStrategyName(firstStrategy.display_name)} 默认参数`,
-      strategy_id: firstStrategy.strategy_id,
+      name: `${tStrategyName(selectedStrategy.display_name)} 配置`,
+      strategy_id: selectedStrategy.strategy_id,
       ...defaultValues,
     })
-  }, [currentUser, strategies, strategyParameterForm])
+  }, [currentUser, selectedStrategyTemplateId, strategies, strategyParameterForm])
 
   const handleLogin = (values: { username: string; password: string }) => {
     setLoginLoading(true)
@@ -782,11 +880,13 @@ function App() {
   }
 
   const handleCreateStrategyParameterSet = (values: Record<string, number | boolean | string>) => {
-    if (!token || !strategies[0]) {
+    const strategy =
+      strategies.find((item) => item.strategy_id === selectedStrategyTemplateId) ??
+      [...strategies].sort((left, right) => strategyTemplateRank(left) - strategyTemplateRank(right))[0]
+    if (!token || !strategy) {
       return
     }
 
-    const strategy = strategies[0]
     const parameters = Object.fromEntries(
       strategy.parameters.map((parameter) => [parameter.name, values[parameter.name] ?? parameter.default]),
     )
@@ -943,6 +1043,20 @@ function App() {
       .finally(() => setSnapshotRevokingId(null))
   }
 
+  const handleQuickBacktest = () => {
+    setActiveSection('backtest')
+    setBacktestQuickFocus(true)
+    window.setTimeout(() => {
+      document.querySelector('.quick-backtest-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+    window.setTimeout(() => setBacktestQuickFocus(false), 1800)
+  }
+
+  const orderedStrategies = [...strategies].sort(
+    (left, right) => strategyTemplateRank(left) - strategyTemplateRank(right),
+  )
+  const selectedStrategyTemplate =
+    orderedStrategies.find((strategy) => strategy.strategy_id === selectedStrategyTemplateId) ?? orderedStrategies[0]
   const selectedBacktest = backtests.find((backtest) => backtest.id === selectedBacktestId) ?? backtests[0] ?? null
   const selectedTrades = selectedBacktest?.result_payload.trade_table ?? []
   const selectedEquity = selectedBacktest?.result_payload.equity_curve ?? []
@@ -950,149 +1064,8 @@ function App() {
   const selectedPosition = selectedBacktest?.result_payload.position_curve ?? []
   const selectedSignal = selectedBacktest?.result_payload.signal_summary
 
-  const loginPanel = (
-    <main className="login-shell">
-      <Card className="login-card">
-        <Space orientation="vertical" size={18}>
-          <div className="login-brand">
-            <ApiOutlined />
-            <div>
-              <Title level={3}>量化系统管理端</Title>
-              <Text type="secondary">登录后管理策略、回测、展示快照和审计日志。</Text>
-            </div>
-          </div>
-          {loginError ? <Alert type="error" showIcon title={loginError} /> : null}
-          <Form
-            layout="vertical"
-            initialValues={{ username: 'admin', password: 'admin' }}
-            onFinish={handleLogin}
-          >
-            <Form.Item label="用户名" name="username" rules={[{ required: true }]}>
-              <Input autoComplete="username" />
-            </Form.Item>
-            <Form.Item label="密码" name="password" rules={[{ required: true }]}>
-              <Input.Password autoComplete="current-password" />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loginLoading} block>
-              登录
-            </Button>
-          </Form>
-        </Space>
-      </Card>
-    </main>
-  )
 
-  return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        token: {
-          colorPrimary: '#2563eb',
-          borderRadius: 6,
-          fontFamily:
-            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        },
-      }}
-    >
-      {!currentUser ? (
-        loginPanel
-      ) : (
-      <Layout className="admin-shell">
-        <Sider width={232} className="admin-sider">
-          <div className="brand">
-            <ApiOutlined />
-            <div>
-              <strong>量化系统</strong>
-              <span>管理控制台</span>
-            </div>
-          </div>
-          <Menu mode="inline" defaultSelectedKeys={['backtests']} items={modules} />
-        </Sider>
-        <Layout>
-          <Header className="admin-header">
-            <div>
-              <Title level={4}>量化策略管理台</Title>
-              <Text type="secondary">管理规则策略的研究、回测、模拟运行、发布和审计。</Text>
-            </div>
-            <Space>
-              <Badge status={apiStatus === 'Connected' ? 'success' : 'processing'} text={`API ${tStatus(apiStatus)}`} />
-              <Tag color="blue">管理员：{currentUser.username}</Tag>
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                onClick={() => backtestForm.submit()}
-                disabled={!instruments.length || !strategyParameterSets.length}
-              >
-                新建回测
-              </Button>
-              <Button onClick={handleLogout}>退出登录</Button>
-            </Space>
-          </Header>
-          <Content className="admin-content">
-            <section className="metric-grid">
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">已管理标的</Text>
-                  <Title level={2}>{instruments.length}</Title>
-                  <Text>{instruments[0] ? `${instruments[0].symbol}.${instruments[0].exchange}` : '请先在下方创建第一只股票'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">固定组合</Text>
-                  <Title level={2}>{portfolios.length}</Title>
-                  <Text>{portfolios[0] ? tDisplayText(portfolios[0].name) : '添加标的后创建组合'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">策略模板</Text>
-                  <Title level={2}>{strategies.length}</Title>
-                  <Text>
-                    {strategyParameterSets.length
-                      ? `已保存 ${strategyParameterSets.length} 套参数`
-                      : strategies[0] ? tStrategyName(strategies[0].display_name) : '正在加载策略注册表'}
-                  </Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">已发布快照</Text>
-                  <Title level={2}>{snapshots.length}</Title>
-                  <Text>{snapshots[0] ? `最新状态：${tStatus(snapshots[0].status)}` : '请发布已复核的回测'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">有效分享链接</Text>
-                  <Title level={2}>{shareLinks.filter((link) => link.is_active).length}</Title>
-                  <Text>{shareLinks[0] ? `最新快照 #${shareLinks[0].snapshot_id}` : '请创建客户展示链接'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">模拟运行</Text>
-                  <Title level={2}>{paperRuns.length}</Title>
-                  <Text>{paperRuns[0] ? `最新权益 ${paperRuns[0].latest_equity.toFixed(2)}` : '请发起一次手动模拟'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">已导入K线</Text>
-                  <Title level={2}>{bars.length}</Title>
-                  <Text>{bars[0] ? `${bars[0].frequency} 最新收盘 ${bars[bars.length - 1]?.close}` : '请导入CSV行情数据'}</Text>
-                </Space>
-              </Card>
-              <Card>
-                <Space orientation="vertical" size={4}>
-                  <Text type="secondary">V1 进度</Text>
-                  <Progress percent={64} size="small" />
-                  <Text>手动模拟运行已接通</Text>
-                </Space>
-              </Card>
-            </section>
-
-            <section className="workspace">
+  const instrumentPanel = (
               <Card title="标的管理">
                 <Form
                   form={instrumentForm}
@@ -1119,7 +1092,9 @@ function App() {
                   dataSource={instruments.map((instrument) => ({ ...instrument, key: instrument.id }))}
                 />
               </Card>
+  )
 
+  const portfolioPanel = (
               <Card title="固定组合管理">
                 <Form
                   form={portfolioForm}
@@ -1168,7 +1143,9 @@ function App() {
                   dataSource={portfolios.map((portfolio) => ({ ...portfolio, key: portfolio.id }))}
                 />
               </Card>
+  )
 
+  const marketDataPanel = (
               <Card title="行情数据管理">
                 {marketDataError ? <Alert type="error" showIcon title={marketDataError} className="form-alert" /> : null}
                 <Form
@@ -1301,7 +1278,9 @@ function App() {
                   dataSource={bars.map((bar) => ({ ...bar, key: bar.id }))}
                 />
               </Card>
+  )
 
+  const importTasksPanel = (
               <Card title="数据导入任务">
                 <Table
                   size="small"
@@ -1330,7 +1309,9 @@ function App() {
                   dataSource={dataImportTasks.map((task) => ({ ...task, key: task.id }))}
                 />
               </Card>
+  )
 
+  const schedulesPanel = (
               <Card title="行情数据计划">
                 <Form
                   form={scheduleForm}
@@ -1393,7 +1374,12 @@ function App() {
                       width: 100,
                       render: (active: boolean) => <Tag color={active ? 'green' : 'default'}>{active ? '启用' : '停用'}</Tag>,
                     },
-                    { title: '上次执行', dataIndex: 'last_message', render: (message: string) => tDataMessage(message) },
+                    {
+                      title: '上次执行',
+                      dataIndex: 'last_message',
+                      width: 260,
+                      render: (message: string) => <span className="table-message-cell">{tDataMessage(message)}</span>,
+                    },
                     {
                       title: '操作',
                       dataIndex: 'id',
@@ -1419,24 +1405,51 @@ function App() {
                       ),
                     },
                   ]}
+                  scroll={{ x: 980 }}
                   dataSource={marketDataSchedules.map((schedule) => ({ ...schedule, key: schedule.id }))}
                 />
               </Card>
+  )
 
+  const strategyPanel = (
               <Card title="策略模板管理">
                 {strategyParameterError ? <Alert type="error" showIcon title={strategyParameterError} className="form-alert" /> : null}
-                {strategies[0] ? (
+                {selectedStrategyTemplate ? (
                   <>
+                    <div className="strategy-template-list">
+                      {orderedStrategies.map((strategy, index) => {
+                        const isSelected = strategy.strategy_id === selectedStrategyTemplate.strategy_id
+                        return (
+                          <button
+                            type="button"
+                            key={strategy.strategy_id}
+                            className={`strategy-template-card${isSelected ? ' selected' : ''}`}
+                            onClick={() => setSelectedStrategyTemplateId(strategy.strategy_id)}
+                          >
+                            <Space orientation="vertical" size={6} align="start">
+                              <Space wrap>
+                                <Tag color={index === 0 ? 'blue' : 'default'}>{index === 0 ? '第一模板' : '策略模板'}</Tag>
+                                <Tag color="geekblue">{strategy.strategy_id}</Tag>
+                              </Space>
+                              <Text strong>{tStrategyName(strategy.display_name)}</Text>
+                              <Text type="secondary">{tStrategyDescription(strategy.description)}</Text>
+                              <Space wrap>
+                                {strategy.supported_frequencies.map((frequency) => (
+                                  <Tag color={frequency === '5m' ? 'blue' : 'default'} key={frequency}>
+                                    {frequency}
+                                  </Tag>
+                                ))}
+                              </Space>
+                            </Space>
+                          </button>
+                        )
+                      })}
+                    </div>
                     <Space orientation="vertical" size={4} className="strategy-summary">
-                      <Text strong>{tStrategyName(strategies[0].display_name)}</Text>
-                      <Text type="secondary">{tStrategyDescription(strategies[0].description)}</Text>
-                      <Space wrap>
-                        {strategies[0].supported_frequencies.map((frequency) => (
-                          <Tag color={frequency === '5m' ? 'blue' : 'default'} key={frequency}>
-                            {frequency}
-                          </Tag>
-                        ))}
-                      </Space>
+                      <Text strong>编辑策略配置</Text>
+                      <Text type="secondary">
+                        策略模板是前端配套的可变参策略；策略配置是基于当前模板保存的一套确定参数。
+                      </Text>
                     </Space>
                     <Form
                       form={strategyParameterForm}
@@ -1445,10 +1458,13 @@ function App() {
                       className="strategy-parameter-form"
                     >
                       <Form.Item name="name" label="参数集名称" rules={[{ required: true }]}>
-                        <Input placeholder="参数集名称" />
+                        <Input placeholder="策略配置名称" />
+                      </Form.Item>
+                      <Form.Item name="strategy_id" hidden>
+                        <Input />
                       </Form.Item>
                       <div className="strategy-parameter-grid">
-                        {strategies[0].parameters.map((parameter) => (
+                        {selectedStrategyTemplate.parameters.map((parameter) => (
                           <Form.Item
                             key={parameter.name}
                             name={parameter.name}
@@ -1473,29 +1489,20 @@ function App() {
                   pagination={{ pageSize: 5 }}
                   columns={[
                     { title: '名称', dataIndex: 'name', render: (name: string) => tDisplayText(name) },
-                    { title: '策略', dataIndex: 'strategy_id', width: 150 },
+                    { title: '策略模板', dataIndex: 'strategy_id', width: 190 },
                     {
-                      title: '网格%',
-                      dataIndex: 'parameters',
-                      width: 100,
-                      render: (parameters: StrategyParameterSet['parameters']) => parameters.grid_percent,
-                    },
-                    {
-                      title: '均线过滤',
-                      dataIndex: 'parameters',
-                      width: 110,
-                      render: (parameters: StrategyParameterSet['parameters']) => (
-                        <Tag color={parameters.enable_ma_filter ? 'green' : 'default'}>
-                          {parameters.enable_ma_filter ? '开启' : '关闭'}
-                        </Tag>
-                      ),
+                      title: '关键参数',
+                      width: 360,
+                      render: (_: unknown, record: StrategyParameterSet) => formatStrategyConfigParameters(record),
                     },
                   ]}
                   dataSource={strategyParameterSets.map((parameterSet) => ({ ...parameterSet, key: parameterSet.id }))}
                 />
               </Card>
+  )
 
-              <Card title="回测任务管理">
+  const backtestRunnerPanel = (
+              <Card className={backtestQuickFocus ? 'quick-backtest-panel quick-focus' : 'quick-backtest-panel'} title="回测任务管理">
                 {backtestError ? <Alert type="error" showIcon title={backtestError} className="form-alert" /> : null}
                 <Form
                   form={backtestForm}
@@ -1610,6 +1617,7 @@ function App() {
                       ),
                     },
                   ]}
+                  scroll={{ x: 1120 }}
                   dataSource={backtests.map((backtest) => ({
                     ...backtest,
                     key: backtest.id,
@@ -1617,7 +1625,9 @@ function App() {
                   }))}
                 />
               </Card>
+  )
 
+  const backtestReviewPanel = (
               <Card
                 title={
                   <Space>
@@ -1754,7 +1764,9 @@ function App() {
                   <Text type="secondary">请先运行回测，再复核指标、曲线和交易明细后发布。</Text>
                 )}
               </Card>
+  )
 
+  const paperPanel = (
               <Card title="模拟运行管理">
                 {paperRunError ? <Alert type="error" showIcon title={paperRunError} className="form-alert" /> : null}
                 <Form
@@ -1883,7 +1895,9 @@ function App() {
                   dataSource={paperRuns.map((paperRun) => ({ ...paperRun, key: paperRun.id }))}
                 />
               </Card>
+  )
 
+  const snapshotsPanel = (
               <Card title="快照发布">
                 {snapshotError ? <Alert type="error" showIcon title={snapshotError} className="form-alert" /> : null}
                 {latestShareToken ? (
@@ -1892,7 +1906,7 @@ function App() {
                     showIcon
                     className="form-alert"
                     title="客户报告链接已生成"
-                    description={clientReportUrl(latestShareToken)}
+                    description={<CopyLinkButton token={latestShareToken} />}
                   />
                 ) : null}
                 <Form
@@ -1948,7 +1962,9 @@ function App() {
                   dataSource={snapshots.map((snapshot) => ({ ...snapshot, key: snapshot.id }))}
                 />
               </Card>
+  )
 
+  const shareLinksPanel = (
               <Card title="客户分享链接管理">
                 {shareLinkError ? <Alert type="error" showIcon title={shareLinkError} className="form-alert" /> : null}
                 {latestShareToken ? (
@@ -1957,7 +1973,7 @@ function App() {
                     showIcon
                     className="form-alert"
                     title="新分享链接已就绪"
-                    description={clientReportUrl(latestShareToken)}
+                    description={<CopyLinkButton token={latestShareToken} />}
                   />
                 ) : null}
                 <Table
@@ -2015,49 +2031,78 @@ function App() {
                   dataSource={shareLinks.map((shareLink) => ({ ...shareLink, key: shareLink.id }))}
                 />
               </Card>
+  )
 
-              <Card
-                title={
-                  <Space>
-                    <LineChartOutlined />
-                    V1 主流程
-                  </Space>
-                }
-              >
-                <div className="pipeline">
-                  {['导入数据', '配置策略', '运行回测', '复核结果', '发布快照', '客户报告'].map(
-                    (item) => (
-                      <div className="pipeline-step" key={item}>
-                        <SafetyCertificateOutlined />
-                        <span>{item}</span>
-                      </div>
-                    ),
-                  )}
+  const keyStatusPanel = (
+              <Card title="关键步骤状态">
+                <div className="overview-status-list">
+                  <div>
+                    <Text type="secondary">数据准备</Text>
+                    <Tag color={dataCompleteness?.status === 'ok' ? 'green' : dataCompleteness?.status === 'warning' ? 'orange' : 'default'}>
+                      {tStatus(dataCompleteness?.status ?? 'unchecked')}
+                    </Tag>
+                    <strong>{dataCompleteness?.bar_count ?? bars.length} 条K线</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">参数配置</Text>
+                    <Tag color={strategyParameterSets.length ? 'green' : 'gold'}>{strategyParameterSets.length ? '已就绪' : '待配置'}</Tag>
+                    <strong>{strategyParameterSets.length} 套参数</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">回测复核</Text>
+                    <Tag color={selectedBacktest?.status === 'succeeded' ? 'green' : selectedBacktest ? 'red' : 'default'}>
+                      {selectedBacktest ? tStatus(selectedBacktest.status) : '待运行'}
+                    </Tag>
+                    <strong>{selectedBacktest ? `#${selectedBacktest.id} · ${formatPercent(selectedBacktest.metrics.cumulative_return)}` : '暂无回测'}</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">报告发布</Text>
+                    <Tag color={snapshots[0]?.status === 'published' ? 'green' : 'default'}>{snapshots[0] ? tStatus(snapshots[0].status) : '待发布'}</Tag>
+                    <strong>{shareLinks.filter((link) => link.is_active).length} 个有效链接</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">模拟运行</Text>
+                    <Tag color={paperRuns[0]?.status === 'succeeded' ? 'green' : paperRuns[0]?.status === 'failed' ? 'red' : 'default'}>
+                      {paperRuns[0] ? tStatus(paperRuns[0].status) : '待运行'}
+                    </Tag>
+                    <strong>{paperRuns[0] ? `权益 ${formatNumber(paperRuns[0].latest_equity)}` : '暂无记录'}</strong>
+                  </div>
                 </div>
               </Card>
+  )
 
-              <Card title="近期任务">
-                <Table
-                  size="small"
-                  pagination={false}
-                  columns={[
-                    { title: '任务', dataIndex: 'name' },
-                    { title: '类型', dataIndex: 'type', width: 100 },
-                    {
-                      title: '状态',
-                      dataIndex: 'status',
-                      width: 110,
-                      render: (status: string) => {
-                        const color = status === 'succeeded' ? 'green' : status === 'running' ? 'blue' : 'default'
-                        return <Tag color={color}>{tStatus(status)}</Tag>
-                      },
-                    },
-                    { title: '更新时间', dataIndex: 'updatedAt', width: 180 },
-                  ]}
-                  dataSource={tasks}
-                />
+  const keyDataPanel = (
+              <Card title="重点数据">
+                <div className="overview-data-grid">
+                  <div>
+                    <Text type="secondary">标的 / 组合</Text>
+                    <strong>{instruments.length} / {portfolios.length}</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">导入任务</Text>
+                    <strong>{dataImportTasks.length}</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">行情计划</Text>
+                    <strong>{marketDataSchedules.filter((schedule) => schedule.is_active).length} 启用</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">回测任务</Text>
+                    <strong>{backtests.length}</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">最新回撤</Text>
+                    <strong>{selectedBacktest ? formatPercent(selectedBacktest.metrics.max_drawdown) : '-'}</strong>
+                  </div>
+                  <div>
+                    <Text type="secondary">快照 / 分享</Text>
+                    <strong>{snapshots.length} / {shareLinks.filter((link) => link.is_active).length}</strong>
+                  </div>
+                </div>
               </Card>
+  )
 
+  const boundariesPanel = (
               <Card
                 title={
                   <Space>
@@ -2073,7 +2118,9 @@ function App() {
                   <Tag color="geekblue">vn.py 保持为底层参考</Tag>
                 </div>
               </Card>
+  )
 
+  const logsPanel = (
               <Card title="操作日志">
                 <Table
                   size="small"
@@ -2092,6 +2139,196 @@ function App() {
                   dataSource={operationLogs.map((log) => ({ ...log, key: log.id }))}
                 />
               </Card>
+  )
+
+  const loginPanel = (
+    <main className="login-shell">
+      <Card className="login-card">
+        <Space orientation="vertical" size={18}>
+          <div className="login-brand">
+            <ApiOutlined />
+            <div>
+              <Title level={3}>量化系统管理端</Title>
+              <Text type="secondary">登录后管理策略、回测、展示快照和审计日志。</Text>
+            </div>
+          </div>
+          {loginError ? <Alert type="error" showIcon title={loginError} /> : null}
+          <Form
+            layout="vertical"
+            initialValues={{ username: 'admin', password: 'admin' }}
+            onFinish={handleLogin}
+          >
+            <Form.Item label="用户名" name="username" rules={[{ required: true }]}>
+              <Input autoComplete="username" />
+            </Form.Item>
+            <Form.Item label="密码" name="password" rules={[{ required: true }]}>
+              <Input.Password autoComplete="current-password" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={loginLoading} block>
+              登录
+            </Button>
+          </Form>
+        </Space>
+      </Card>
+    </main>
+  )
+
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#2563eb',
+          borderRadius: 6,
+          fontFamily:
+            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        },
+      }}
+    >
+      {!currentUser ? (
+        loginPanel
+      ) : (
+      <Layout className="admin-shell">
+        <Sider width={232} className="admin-sider">
+          <div className="brand">
+            <ApiOutlined />
+            <div>
+              <strong>量化系统</strong>
+              <span>管理控制台</span>
+            </div>
+          </div>
+          <Menu
+            mode="inline"
+            selectedKeys={[activeSection]}
+            items={researchModules}
+            onClick={({ key }) => setActiveSection(String(key))}
+          />
+        </Sider>
+        <Layout>
+          <Header className="admin-header">
+            <div>
+              <Title level={4}>量化策略管理台</Title>
+              <Text type="secondary">管理规则策略的研究、回测、模拟运行、发布和审计。</Text>
+            </div>
+            <Space>
+              <Badge status={apiStatus === 'Connected' ? 'success' : 'processing'} text={`API ${tStatus(apiStatus)}`} />
+              <Tag color="blue">管理员：{currentUser.username}</Tag>
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={handleQuickBacktest}
+                disabled={!instruments.length || !strategyParameterSets.length}
+              >
+                快速新建回测
+              </Button>
+              <Button onClick={handleLogout}>退出登录</Button>
+            </Space>
+          </Header>
+          <Content className="admin-content">
+            <CommandRail items={commandRailItems} activeSection={activeSection} onSelect={setActiveSection} />
+            <section className={metricsCollapsed ? 'metric-strip collapsed' : 'metric-strip'}>
+              <Button
+                className="metric-collapse-button"
+                size="small"
+                icon={metricsCollapsed ? <DownOutlined /> : <UpOutlined />}
+                onClick={() => setMetricsCollapsed((collapsed) => !collapsed)}
+              >
+                {metricsCollapsed ? '展开概览' : '收起'}
+              </Button>
+              {!metricsCollapsed ? (
+              <div className="metric-grid">
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">已管理标的</Text>
+                  <Title level={2}>{instruments.length}</Title>
+                  <Text>{instruments[0] ? `${instruments[0].symbol}.${instruments[0].exchange}` : '请先在下方创建第一只股票'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">固定组合</Text>
+                  <Title level={2}>{portfolios.length}</Title>
+                  <Text>{portfolios[0] ? tDisplayText(portfolios[0].name) : '添加标的后创建组合'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">策略模板</Text>
+                  <Title level={2}>{strategies.length}</Title>
+                  <Text>
+                    {strategyParameterSets.length
+                      ? `已保存 ${strategyParameterSets.length} 套策略配置`
+                      : orderedStrategies[0] ? `第一模板：${tStrategyName(orderedStrategies[0].display_name)}` : '正在加载策略注册表'}
+                  </Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">已发布快照</Text>
+                  <Title level={2}>{snapshots.length}</Title>
+                  <Text>{snapshots[0] ? `最新状态：${tStatus(snapshots[0].status)}` : '请发布已复核的回测'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">有效分享链接</Text>
+                  <Title level={2}>{shareLinks.filter((link) => link.is_active).length}</Title>
+                  <Text>{shareLinks[0] ? `最新快照 #${shareLinks[0].snapshot_id}` : '请创建客户展示链接'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">模拟运行</Text>
+                  <Title level={2}>{paperRuns.length}</Title>
+                  <Text>{paperRuns[0] ? `最新权益 ${paperRuns[0].latest_equity.toFixed(2)}` : '请发起一次手动模拟'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">已导入K线</Text>
+                  <Title level={2}>{bars.length}</Title>
+                  <Text>{bars[0] ? `${bars[0].frequency} 最新收盘 ${bars[bars.length - 1]?.close}` : '请导入CSV行情数据'}</Text>
+                </Space>
+              </Card>
+              <Card>
+                <Space orientation="vertical" size={4}>
+                  <Text type="secondary">V1 进度</Text>
+                  <Progress percent={64} size="small" />
+                  <Text>手动模拟运行已接通</Text>
+                </Space>
+              </Card>
+              </div>
+              ) : null}
+            </section>
+
+            <section className="workspace">
+              <div hidden={activeSection !== 'overview'}>
+                <OverviewSection keyStatus={keyStatusPanel} keyData={keyDataPanel} />
+              </div>
+              <div hidden={activeSection !== 'data'}>
+                <DataSection
+                  instruments={instrumentPanel}
+                  portfolios={portfolioPanel}
+                  marketData={marketDataPanel}
+                  importTasks={importTasksPanel}
+                  schedules={schedulesPanel}
+                />
+              </div>
+              <div hidden={activeSection !== 'strategy'}>
+                <StrategySection editor={strategyPanel} />
+              </div>
+              <div hidden={activeSection !== 'backtest'}>
+                <BacktestSection runner={backtestRunnerPanel} review={backtestReviewPanel} />
+              </div>
+              <div hidden={activeSection !== 'publication'}>
+                <PublicationSection snapshots={snapshotsPanel} links={shareLinksPanel} />
+              </div>
+              <div hidden={activeSection !== 'paper'}>
+                <PaperSection paper={paperPanel} />
+              </div>
+              <div hidden={activeSection !== 'audit'}>
+                <AuditSection logs={logsPanel} boundaries={boundariesPanel} />
+              </div>
             </section>
           </Content>
         </Layout>

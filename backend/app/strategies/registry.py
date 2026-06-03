@@ -111,9 +111,117 @@ ROLLING_T_GRID = StrategyTemplate(
     ],
 )
 
+A_SHARE_T0_VWAP = StrategyTemplate(
+    strategy_id="a_share_t0_vwap",
+    display_name="A-share T0 VWAP Channel Strategy",
+    description=(
+        "A-share base-position T0 strategy using intraday VWAP standard-deviation "
+        "channels, 100-share lots, T+1 sellable-position constraints, and separate "
+        "buy/sell transaction costs."
+    ),
+    version="0.1.0",
+    supported_scopes=["single_stock", "fixed_portfolio"],
+    supported_frequencies=["5m", "15m", "30m", "60m"],
+    parameters=[
+        StrategyParameter(
+            name="base_position_percent",
+            label="Base Position Percent",
+            type="number",
+            default=40,
+            min_value=0,
+            max_value=100,
+            description="Initial base position percentage of cash. ETF trend state can be reflected by choosing 10, 40, or 70.",
+        ),
+        StrategyParameter(
+            name="channel_k",
+            label="Channel K",
+            type="number",
+            default=2.0,
+            min_value=0.1,
+            max_value=10,
+            description="Standard-deviation multiplier for VWAP support and resistance channels.",
+        ),
+        StrategyParameter(
+            name="channel_window",
+            label="Channel Window",
+            type="integer",
+            default=20,
+            min_value=2,
+            max_value=240,
+            description="Rolling window used for intraday close-price standard deviation.",
+        ),
+        StrategyParameter(
+            name="t_fraction",
+            label="T Fraction",
+            type="number",
+            default=1 / 3,
+            min_value=0.01,
+            max_value=1,
+            description="Fraction of the base position used for one T0 leg before lot-size rounding.",
+        ),
+        StrategyParameter(
+            name="min_lot",
+            label="Min Lot",
+            type="integer",
+            default=100,
+            min_value=1,
+            max_value=10000,
+            description="Minimum tradable share lot. A-share stocks usually use 100.",
+        ),
+        StrategyParameter(
+            name="stop_open_time",
+            label="Stop Open Time",
+            type="select",
+            default="14:50",
+            options=["14:30", "14:45", "14:50", "14:55"],
+            description="Time after which the strategy stops opening new T0 positions.",
+        ),
+        StrategyParameter(
+            name="force_close_time",
+            label="Force Close Time",
+            type="select",
+            default="14:55",
+            options=["14:45", "14:50", "14:55", "15:00"],
+            description="Time after which open T0 legs are force-closed when possible.",
+        ),
+        StrategyParameter(
+            name="buy_fee_rate",
+            label="Buy Fee Rate",
+            type="number",
+            default=0.00026,
+            min_value=0,
+            max_value=0.05,
+            description="Buy-side transaction cost rate.",
+        ),
+        StrategyParameter(
+            name="sell_fee_rate",
+            label="Sell Fee Rate",
+            type="number",
+            default=0.00076,
+            min_value=0,
+            max_value=0.05,
+            description="Sell-side transaction cost rate including stamp duty.",
+        ),
+    ],
+    output_contract=[
+        "metrics",
+        "equity_curve",
+        "benchmark_curve",
+        "drawdown_curve",
+        "candles",
+        "t0_channels",
+        "trade_markers",
+        "position_curve",
+        "trade_table",
+        "signal_events",
+        "baseline",
+        "risk_disclosure",
+    ],
+)
+
 
 def get_strategy_registry() -> list[StrategyTemplate]:
-    return [ROLLING_T_GRID]
+    return [A_SHARE_T0_VWAP, ROLLING_T_GRID]
 
 
 def get_strategy_template(strategy_id: str) -> StrategyTemplate | None:
