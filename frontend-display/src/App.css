@@ -486,6 +486,118 @@ p {
   line-height: 1.7;
 }
 
+.narrative-panel {
+  border-color: #cbdde8;
+  background:
+    linear-gradient(180deg, #ffffff, #f8fbfc);
+}
+
+.narrative-rating {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.narrative-rating.positive {
+  background: #eef8f5;
+  color: #0f766e;
+}
+
+.narrative-rating.warning {
+  background: #fff9eb;
+  color: var(--warn);
+}
+
+.narrative-rating.neutral {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.narrative-disclaimer {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid #dce5ee;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.narrative-client-modules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.narrative-client-modules article {
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.narrative-client-modules article.expanded {
+  border-color: #cbdde8;
+}
+
+.narrative-client-modules button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: #fbfcfd;
+  color: #172033;
+  cursor: pointer;
+}
+
+.narrative-client-modules button span,
+.narrative-client-modules button strong {
+  overflow-wrap: anywhere;
+}
+
+.narrative-client-modules button strong {
+  flex: 0 0 auto;
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.narrative-client-modules article > p {
+  margin: 0;
+  padding: 13px 14px;
+  color: #344054;
+  line-height: 1.7;
+}
+
+.narrative-module-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.narrative-module-body p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.75;
+}
+
+.narrative-module-body ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #475569;
+  line-height: 1.65;
+}
+
 .trade-panel,
 .assumptions-panel,
 .risk-disclosure {
@@ -705,6 +817,7 @@ dd {
   .summary-copy,
   .summary-facts,
   .metric-strip,
+  .narrative-client-modules,
   .signal-summary-row,
   .analysis-grid,
   .assumption-grid {

@@ -122,6 +122,25 @@ type SignalSummary = {
   ma_window?: number
 }
 
+type NarrativeModule = {
+  key: string
+  title: string
+  summary: string
+  paragraphs: string[]
+  bullets: string[]
+  visible: boolean
+  default_expanded: boolean
+}
+
+type NarrativePayload = {
+  enabled?: boolean
+  label?: string
+  rating?: 'positive' | 'neutral' | 'cautious' | string
+  reviewed?: boolean
+  disclaimer?: string
+  modules?: NarrativeModule[]
+}
+
 type SnapshotPayload = {
   title: string
   strategy_id: string
@@ -136,6 +155,7 @@ type SnapshotPayload = {
   data_quality?: DataQuality
   technical_indicators?: TechnicalIndicators
   signal_summary?: SignalSummary
+  narrative?: NarrativePayload
   metrics: {
     cumulative_return?: number
     annualized_return?: number
@@ -363,6 +383,29 @@ function decisionLabel(decision?: string): string {
     default:
       return decision || '-'
   }
+}
+
+function ratingLabel(rating?: string): string {
+  switch (rating) {
+    case 'positive':
+      return '积极'
+    case 'cautious':
+      return '谨慎'
+    case 'neutral':
+      return '中性'
+    default:
+      return rating || '未评级'
+  }
+}
+
+function ratingTone(rating?: string): Tone {
+  if (rating === 'positive') {
+    return 'positive'
+  }
+  if (rating === 'cautious') {
+    return 'warning'
+  }
+  return 'neutral'
 }
 
 function sideTone(side: unknown): 'buy' | 'sell' {
@@ -1197,6 +1240,72 @@ function DrawdownSummary({ payload }: { payload: SnapshotPayload }) {
   )
 }
 
+function NarrativePanel({ narrative }: { narrative?: NarrativePayload }) {
+  const [openModules, setOpenModules] = useState<string[]>(() =>
+    (narrative?.modules ?? []).filter((module) => module.default_expanded).map((module) => module.key),
+  )
+
+  useEffect(() => {
+    setOpenModules((narrative?.modules ?? []).filter((module) => module.default_expanded).map((module) => module.key))
+  }, [narrative])
+
+  if (!narrative?.enabled || !narrative.reviewed) {
+    return null
+  }
+
+  const visibleModules = (narrative.modules ?? []).filter((module) => module.visible)
+  if (!visibleModules.length) {
+    return null
+  }
+
+  const toggleModule = (key: string) => {
+    setOpenModules((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
+  }
+
+  return (
+    <section className="panel narrative-panel wide">
+      <header>
+        <div>
+          <span className="section-label">投研叙事</span>
+          <h2>{narrative.label || 'AI 投研参考结论'}</h2>
+        </div>
+        <strong className={`narrative-rating ${ratingTone(narrative.rating)}`}>{ratingLabel(narrative.rating)}</strong>
+      </header>
+      <p className="narrative-disclaimer">
+        {narrative.disclaimer || 'AI 辅助生成，已人工审核。本区块用于解释量化结果，不构成投资建议。'}
+      </p>
+      <div className="narrative-client-modules">
+        {visibleModules.map((module) => {
+          const expanded = openModules.includes(module.key)
+          return (
+            <article className={expanded ? 'expanded' : ''} key={module.key}>
+              <button type="button" onClick={() => toggleModule(module.key)} aria-expanded={expanded}>
+                <span>{module.title}</span>
+                <strong>{expanded ? '收起' : '展开'}</strong>
+              </button>
+              <p>{module.summary}</p>
+              {expanded ? (
+                <div className="narrative-module-body">
+                  {(module.paragraphs ?? []).map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))}
+                  {module.bullets?.length ? (
+                    <ul>
+                      {module.bullets.map((bullet) => (
+                        <li key={bullet}>{bullet}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 function TradeTable({
   trades,
   summary,
@@ -1451,6 +1560,7 @@ function App() {
         <CandlePanel payload={payload} />
         <PositionPanel points={result.position_curve ?? []} />
         <DrawdownSummary payload={payload} />
+        <NarrativePanel narrative={payload.narrative} />
         <TradeTable
           trades={result.trade_table ?? []}
           summary={payload.trade_summary}
