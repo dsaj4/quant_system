@@ -154,6 +154,46 @@ timestamp,open,high,low,close,volume
 
 ## 7. 常见问题
 
+## 7A. TradingAgents 投研叙事 demo 路径
+
+目标 demo：
+
+- 在现有回测结果之外增加一层已审核、可展示、可审计的客户投研叙事。
+- 叙事只解释当前量化结果，不改变回测指标、策略信号、模拟成交或实盘行为。
+- 客户侧只展示最终审核版，不展示 TradingAgents 名称、原始建议、降级原因、审核人、审核时间、分析日期或评级规则。
+
+启动前确认：
+
+- `.env` 已配置 `QUANT_TRADING_AGENTS_ENABLED=true`。
+- `.env` 已配置 DeepSeek 或其他 LLM provider key。
+- `.env` 已配置 `ALPHA_VANTAGE_API_KEY`，即使默认数据 vendor 使用 `yfinance`。
+- 已安装 `tradingagents==0.2.5`，或确认本次只演示 disabled/mock 状态。
+
+推荐流程：
+
+1. 运行并复核一个 succeeded backtest。
+2. 进入管理端“客户报告发布”。
+3. 在“AI 投研叙事审核”中选择分析日期并生成叙事。
+4. 如果状态为 `degraded`，查看降级原因并点击确认。
+5. 编辑结构化模块，保存草稿。
+6. 审核通过。
+7. 发布 snapshot。
+8. 打开客户展示端，确认叙事位于图表之后、交易记录之前。
+
+真实 TradingAgents smoke：
+
+```powershell
+.\scripts\run_tradingagents_smoke.ps1
+```
+
+验收重点：
+
+- 未配置 TradingAgents 时，管理端显示 `AI 投研未配置`，不会影响普通 snapshot 发布。
+- 已审核叙事发布后会固化进 `PublishedSnapshot.immutable_payload.narrative`。
+- 重新生成叙事不会改变已发布的旧 public link。
+- 客户侧显示 `AI 投研参考结论`、评级、免责声明和可折叠模块。
+- 客户侧不显示 provider 内部字段或审核审计字段。
+
 ### 报告 404
 
 优先检查：

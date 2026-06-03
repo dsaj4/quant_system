@@ -31,9 +31,15 @@
 
 - [ ] 已选择或创建 `rolling_t_grid` 参数集。
 - [ ] 回测成功生成 metrics、equity curve、drawdown curve、position curve、trade table。
+- [ ] 如演示 AI 投研叙事，已在管理端生成结构化草稿。
+- [ ] 降级叙事已人工确认后再审核。
+- [ ] 已审核叙事只解释当前回测结果，不新增或改写策略信号。
 - [ ] 客户报告已发布 snapshot。
+- [ ] 若存在已审核叙事，发布前提示“本次发布将包含已审核的 AI 投研叙事，并固化进客户快照”。
 - [ ] 客户报告链接只口头或临时发送，不写入版本库文档。
 - [ ] 客户报告可见核心指标、K 线证据图、交易表、方法假设、风险披露。
+- [ ] 客户报告中的 AI 投研叙事位于图表之后、交易记录之前。
+- [ ] 客户报告不显示 TradingAgents 名称、原始建议、降级原因、审核人、审核时间、分析日期或评级规则。
 - [ ] 报告图表非空，桌面和移动端无明显重叠。
 
 ## 5. 模拟运行
@@ -49,6 +55,7 @@
 - [ ] 展示端：`cd frontend-display; npm.cmd run build`
 - [ ] 管理端：`cd frontend-admin; npm.cmd run build`
 - [ ] 可选：真实 Tushare smoke 只在自动测试通过后做最小量调用。
+- [ ] 可选：TradingAgents smoke：`.\scripts\run_tradingagents_smoke.ps1`
 
 ## 7. 客户边界口径
 
