@@ -44,6 +44,8 @@ import {
   fetchMarketBars,
   fetchMarketDataCompleteness,
   fetchMarketDataSchedules,
+  fetchNarrativeConfig,
+  fetchNarrativeForBacktest,
   fetchPaperRuns,
   fetchPortfolios,
   fetchShareLinks,
@@ -53,16 +55,22 @@ import {
   createBacktest,
   createInstrument,
   createMarketDataSchedule,
+  acknowledgeNarrativeDegraded,
+  approveNarrative,
   createPaperRun,
   createPortfolio,
   createShareLink,
   createStrategyParameterSet,
   fetchPublicMarketData,
+  generateNarrative,
   importCsvMarketData,
   publishSnapshot,
+  regenerateNarrative,
   revokeSnapshot,
   revokeShareLink,
   runMarketDataSchedule,
+  updateNarrativeDraft,
+  withdrawNarrativeReview,
   disableMarketDataSchedule,
   type BacktestInput,
   type BacktestRun,
@@ -75,6 +83,9 @@ import {
   type InstrumentInput,
   type MarketDataSchedule,
   type MarketDataScheduleInput,
+  type NarrativeConfig,
+  type NarrativePayload,
+  type NarrativeRun,
   type OperationLog,
   type PaperRun,
   type PaperRunInput,
@@ -94,6 +105,7 @@ import { AuditSection } from './sections/AuditSection'
 import { BacktestSection } from './sections/BacktestSection'
 import { DataSection } from './sections/DataSection'
 import { OverviewSection } from './sections/OverviewSection'
+import { NarrativeSection } from './sections/NarrativeSection'
 import { PaperSection } from './sections/PaperSection'
 import { PublicationSection } from './sections/PublicationSection'
 import { StrategySection } from './sections/StrategySection'
@@ -192,6 +204,8 @@ const statusText: Record<string, string> = {
   running: '运行中',
   succeeded: '成功',
   failed: '失败',
+  degraded: '降级',
+  reviewed: '已审核',
   executed: '已执行',
   blocked_by_ma_filter: '均线过滤',
   skipped_no_available_cash_or_position: '资金/仓位不足',
@@ -233,6 +247,14 @@ const operationActionText: Record<string, string> = {
   'snapshot.revoke': '撤销展示快照',
   'share_link.create': '创建分享链接',
   'share_link.revoke': '撤销分享链接',
+  'narrative.generate.accepted': '接受叙事生成',
+  'narrative.generate.succeeded': '叙事生成成功',
+  'narrative.generate.degraded': '叙事降级生成',
+  'narrative.generate.failed': '叙事生成失败',
+  'narrative.degraded.acknowledged': '确认降级叙事',
+  'narrative.review.approved': '叙事审核通过',
+  'narrative.review.withdrawn': '撤回叙事审核',
+  'narrative.publish.included': '发布包含叙事',
 }
 
 const targetTypeText: Record<string, string> = {
@@ -246,6 +268,7 @@ const targetTypeText: Record<string, string> = {
   backtest: '回测',
   paper_run: '模拟运行',
   snapshot: '展示快照',
+  narrative_run: '投研叙事',
   share_link: '分享链接',
 }
 
@@ -460,6 +483,8 @@ function App() {
   const [paperRuns, setPaperRuns] = useState<PaperRun[]>([])
   const [dataImportTasks, setDataImportTasks] = useState<DataImportTask[]>([])
   const [marketDataSchedules, setMarketDataSchedules] = useState<MarketDataSchedule[]>([])
+  const [narrativeConfig, setNarrativeConfig] = useState<NarrativeConfig | null>(null)
+  const [currentNarrative, setCurrentNarrative] = useState<NarrativeRun | null>(null)
   const [snapshots, setSnapshots] = useState<PublishedSnapshot[]>([])
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([])
   const [latestShareToken, setLatestShareToken] = useState('')
@@ -494,6 +519,8 @@ function App() {
   const [strategyParameterSaving, setStrategyParameterSaving] = useState(false)
   const [backtestRunning, setBacktestRunning] = useState(false)
   const [paperRunStarting, setPaperRunStarting] = useState(false)
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const [narrativeActionLoading, setNarrativeActionLoading] = useState(false)
   const [snapshotPublishing, setSnapshotPublishing] = useState(false)
   const [snapshotRevokingId, setSnapshotRevokingId] = useState<number | null>(null)
   const [shareLinkCreatingId, setShareLinkCreatingId] = useState<number | null>(null)
@@ -502,6 +529,7 @@ function App() {
   const [strategyParameterError, setStrategyParameterError] = useState('')
   const [backtestError, setBacktestError] = useState('')
   const [paperRunError, setPaperRunError] = useState('')
+  const [narrativeError, setNarrativeError] = useState('')
   const [snapshotError, setSnapshotError] = useState('')
   const [shareLinkError, setShareLinkError] = useState('')
 
@@ -514,6 +542,7 @@ function App() {
       fetchPortfolios(accessToken),
       fetchDataImportTasks(accessToken),
       fetchMarketDataSchedules(accessToken),
+      fetchNarrativeConfig(accessToken),
       fetchStrategyParameterSets(accessToken),
       fetchBacktests(accessToken),
       fetchPaperRuns(accessToken),
@@ -528,6 +557,7 @@ function App() {
         portfolioPayload,
         importTaskPayload,
         schedulePayload,
+        narrativeConfigPayload,
         strategyParameterSetPayload,
         backtestPayload,
         paperRunPayload,
@@ -541,6 +571,7 @@ function App() {
         setPortfolios(portfolioPayload)
         setDataImportTasks(importTaskPayload)
         setMarketDataSchedules(schedulePayload)
+        setNarrativeConfig(narrativeConfigPayload)
         setStrategyParameterSets(strategyParameterSetPayload)
         setBacktests(backtestPayload)
         setSelectedBacktestId((current) => current ?? backtestPayload[0]?.id ?? null)
@@ -568,6 +599,8 @@ function App() {
         setDataCompleteness(null)
         setDataImportTasks([])
         setMarketDataSchedules([])
+        setNarrativeConfig(null)
+        setCurrentNarrative(null)
         setStrategyParameterSets([])
         setBacktests([])
         setSelectedBacktestId(null)
@@ -661,6 +694,47 @@ function App() {
     })
   }, [currentUser, selectedStrategyTemplateId, strategies, strategyParameterForm])
 
+  const loadCurrentNarrative = (accessToken = token, backtestId = selectedBacktestId) => {
+    if (!accessToken || !backtestId) {
+      setCurrentNarrative(null)
+      return Promise.resolve(null)
+    }
+
+    setNarrativeLoading(true)
+    setNarrativeError('')
+    return fetchNarrativeForBacktest(accessToken, backtestId)
+      .then((payload) => {
+        setCurrentNarrative(payload)
+        return payload
+      })
+      .catch((error) => {
+        if (error instanceof Error && !error.message.includes('Narrative not found')) {
+          setNarrativeError(error.message)
+        }
+        setCurrentNarrative(null)
+        return null
+      })
+      .finally(() => setNarrativeLoading(false))
+  }
+
+  useEffect(() => {
+    if (!token || !selectedBacktestId) {
+      setCurrentNarrative(null)
+      return
+    }
+    loadCurrentNarrative(token, selectedBacktestId)
+  }, [selectedBacktestId, token])
+
+  useEffect(() => {
+    if (!token || !selectedBacktestId || !currentNarrative || !['pending', 'running'].includes(currentNarrative.status)) {
+      return
+    }
+    const timer = window.setInterval(() => {
+      loadCurrentNarrative(token, selectedBacktestId)
+    }, 1800)
+    return () => window.clearInterval(timer)
+  }, [currentNarrative, selectedBacktestId, token])
+
   const handleLogin = (values: { username: string; password: string }) => {
     setLoginLoading(true)
     setLoginError('')
@@ -684,6 +758,8 @@ function App() {
     setDataCompleteness(null)
     setDataImportTasks([])
     setMarketDataSchedules([])
+    setNarrativeConfig(null)
+    setCurrentNarrative(null)
     setStrategyParameterSets([])
     setBacktests([])
     setSelectedBacktestId(null)
@@ -961,6 +1037,102 @@ function App() {
         })
       })
       .finally(() => setPaperRunStarting(false))
+  }
+
+  const handleGenerateNarrative = (analysisDate: string) => {
+    if (!token || !selectedBacktestId) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    generateNarrative(token, {
+      backtest_run_id: selectedBacktestId,
+      analysis_date: analysisDate,
+    })
+      .then((payload) => {
+        setCurrentNarrative(payload)
+        window.setTimeout(() => {
+          loadCurrentNarrative(token, selectedBacktestId)
+        }, 1200)
+      })
+      .then(() => fetchOperationLogs(token).then(setOperationLogs))
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '叙事生成失败'))
+      .finally(() => setNarrativeActionLoading(false))
+  }
+
+  const handleSaveNarrativeDraft = (payload: NarrativePayload) => {
+    if (!token || !currentNarrative) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    updateNarrativeDraft(token, currentNarrative.id, { payload })
+      .then(setCurrentNarrative)
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '草稿保存失败'))
+      .finally(() => setNarrativeActionLoading(false))
+  }
+
+  const handleAcknowledgeNarrative = () => {
+    if (!token || !currentNarrative) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    acknowledgeNarrativeDegraded(token, currentNarrative.id)
+      .then(setCurrentNarrative)
+      .then(() => fetchOperationLogs(token).then(setOperationLogs))
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '降级确认失败'))
+      .finally(() => setNarrativeActionLoading(false))
+  }
+
+  const handleApproveNarrative = () => {
+    if (!token || !currentNarrative) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    approveNarrative(token, currentNarrative.id, {})
+      .then(setCurrentNarrative)
+      .then(() => fetchOperationLogs(token).then(setOperationLogs))
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '审核失败'))
+      .finally(() => setNarrativeActionLoading(false))
+  }
+
+  const handleWithdrawNarrative = () => {
+    if (!token || !currentNarrative) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    withdrawNarrativeReview(token, currentNarrative.id)
+      .then(setCurrentNarrative)
+      .then(() => fetchOperationLogs(token).then(setOperationLogs))
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '撤回审核失败'))
+      .finally(() => setNarrativeActionLoading(false))
+  }
+
+  const handleRegenerateNarrative = (analysisDate: string) => {
+    if (!token || !currentNarrative) {
+      return
+    }
+
+    setNarrativeActionLoading(true)
+    setNarrativeError('')
+    regenerateNarrative(token, currentNarrative.id, { analysis_date: analysisDate })
+      .then((payload) => {
+        setCurrentNarrative(payload)
+        window.setTimeout(() => {
+          loadCurrentNarrative(token, selectedBacktestId)
+        }, 1200)
+      })
+      .then(() => fetchOperationLogs(token).then(setOperationLogs))
+      .catch((error) => setNarrativeError(error instanceof Error ? error.message : '重新生成失败'))
+      .finally(() => setNarrativeActionLoading(false))
   }
 
   const handlePublishSnapshot = (values: SnapshotPublishInput) => {
@@ -1897,6 +2069,24 @@ function App() {
               </Card>
   )
 
+  const narrativePanel = (
+              <NarrativeSection
+                selectedBacktest={selectedBacktest}
+                config={narrativeConfig}
+                narrative={currentNarrative}
+                loading={narrativeLoading}
+                actionLoading={narrativeActionLoading}
+                error={narrativeError}
+                onRefresh={() => loadCurrentNarrative()}
+                onGenerate={handleGenerateNarrative}
+                onSaveDraft={handleSaveNarrativeDraft}
+                onAcknowledgeDegraded={handleAcknowledgeNarrative}
+                onApprove={handleApproveNarrative}
+                onWithdraw={handleWithdrawNarrative}
+                onRegenerate={handleRegenerateNarrative}
+              />
+  )
+
   const snapshotsPanel = (
               <Card title="快照发布">
                 {snapshotError ? <Alert type="error" showIcon title={snapshotError} className="form-alert" /> : null}
@@ -1907,6 +2097,15 @@ function App() {
                     className="form-alert"
                     title="客户报告链接已生成"
                     description={<CopyLinkButton token={latestShareToken} />}
+                  />
+                ) : null}
+                {currentNarrative?.status === 'reviewed' &&
+                Number(snapshotForm.getFieldValue('backtest_run_id') || selectedBacktest?.id) === currentNarrative.backtest_run_id ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    className="form-alert"
+                    title="本次发布将包含已审核的 AI 投研叙事，并固化进客户快照。"
                   />
                 ) : null}
                 <Form
@@ -2321,7 +2520,7 @@ function App() {
                 <BacktestSection runner={backtestRunnerPanel} review={backtestReviewPanel} />
               </div>
               <div hidden={activeSection !== 'publication'}>
-                <PublicationSection snapshots={snapshotsPanel} links={shareLinksPanel} />
+                <PublicationSection narrative={narrativePanel} snapshots={snapshotsPanel} links={shareLinksPanel} />
               </div>
               <div hidden={activeSection !== 'paper'}>
                 <PaperSection paper={paperPanel} />

@@ -356,6 +356,64 @@
   color: #2563eb;
 }
 
+.narrative-workspace {
+  width: 100%;
+}
+
+.narrative-toolbar,
+.narrative-modules-header,
+.narrative-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.narrative-audit-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1.4fr);
+  gap: 12px;
+}
+
+.narrative-audit-grid > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.narrative-audit-grid strong {
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  white-space: pre-wrap;
+}
+
+.narrative-json {
+  max-height: 240px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.narrative-modules,
+.narrative-module-editor {
+  width: 100%;
+}
+
+.narrative-modules-header h5 {
+  margin: 0;
+}
+
 .boundary-list {
   display: flex;
   flex-wrap: wrap;
@@ -459,6 +517,7 @@
   .metric-grid,
   .workspace,
   .data-quality-panel,
+  .narrative-audit-grid,
   .review-metrics,
   .review-chart-grid {
     grid-template-columns: 1fr;
